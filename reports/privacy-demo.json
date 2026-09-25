@@ -1,0 +1,518 @@
+{
+  "mint": "ECV7iA3YSpoUpW8BqGrD3tiV6YdLBjfHM1evuaBJxZ9j",
+  "views": {
+    "Alice": [
+      {
+        "at": "2026-09-15T21:51:51.270Z",
+        "viewer": "Alice",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "1.110000",
+            "eATA_balance": "other layout",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311514410,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2",
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "not sent",
+            "errors": [],
+            "slot": 311514506
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "not sent",
+            "errors": [],
+            "slot": 311514570
+          }
+        ]
+      },
+      {
+        "at": "2026-09-15T22:04:53.828Z",
+        "viewer": "Alice",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "1.110000",
+            "eATA_balance": "other layout",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311529997,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2",
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311530093,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311530189,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          }
+        ]
+      },
+      {
+        "at": "2026-09-21T19:15:43.130Z",
+        "viewer": "Alice",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "1.110000",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 326425971,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2",
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 326426492,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 326426941,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          }
+        ]
+      }
+    ],
+    "Bob": [
+      {
+        "at": "2026-09-15T22:06:22.298Z",
+        "viewer": "Bob",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311531767,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "2.220000",
+            "eATA_balance": "other layout",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311531863,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2",
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311531959,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          }
+        ]
+      }
+    ],
+    "Carol": [
+      {
+        "at": "2026-09-15T22:06:55.092Z",
+        "viewer": "Carol",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311532422,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311532518,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "3.330000",
+            "eATA_balance": "other layout",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311532614,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2",
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          }
+        ]
+      },
+      {
+        "at": "2026-09-21T20:52:56.022Z",
+        "viewer": "Carol",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 327009258,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 327009738,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "3.330000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 327010218,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2",
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          }
+        ]
+      },
+      {
+        "at": "2026-09-21T21:59:44.304Z",
+        "viewer": "Carol",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 327410087,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 327410567,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "3.000000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 327411047,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2",
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          }
+        ]
+      }
+    ],
+    "outsider": [
+      {
+        "at": "2026-09-15T22:20:59.293Z",
+        "viewer": "outsider",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311549306,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311549402,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311549498,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          }
+        ]
+      }
+    ],
+    "public": [
+      {
+        "at": "2026-09-15T22:26:33.444Z",
+        "viewer": "public",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "other layout",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 498984859,
+            "accountProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "other layout",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 498984888,
+            "accountProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "other layout",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 498984915,
+            "accountProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          }
+        ]
+      },
+      {
+        "at": "2026-09-15T22:42:50.838Z",
+        "viewer": "public",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "1.110000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 498990787,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 498990817,
+            "accountProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 498990845,
+            "accountProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          }
+        ]
+      },
+      {
+        "at": "2026-09-15T22:47:38.349Z",
+        "viewer": "public",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "1.110000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 498992547,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "2.220000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 498992579,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 498992607,
+            "accountProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          }
+        ]
+      },
+      {
+        "at": "2026-09-21T20:06:25.041Z",
+        "viewer": "public",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "1.110000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 502068325,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "2.220000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 502068353,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 502068383,
+            "accountProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          }
+        ]
+      },
+      {
+        "at": "2026-09-21T20:22:46.697Z",
+        "viewer": "public",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "1.110000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 502074251,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "2.220000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 502074281,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 502074310,
+            "accountProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          }
+        ]
+      },
+      {
+        "at": "2026-09-22T11:37:13.929Z",
+        "viewer": "public",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "1.110000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 502405570,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "2.220000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 502405597,
+            "accountProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.330000",
+            "eATA_balance": "0.000000",
+            "payment_receipt": "absent or filtered",
+            "errors": [],
+            "slot": 502405627,
+            "accountProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          }
+        ]
+      }
+    ],
+    "unauth": [
+      {
+        "at": "2026-09-15T22:35:46.933Z",
+        "viewer": "unauth",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311567059,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311567155,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance": "0.000000",
+            "eATA_balance": "absent or filtered",
+            "payment_receipt": "READABLE",
+            "errors": [],
+            "slot": 311567251,
+            "messageBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          }
+        ]
+      }
+    ]
+  },
+  "scope": "Synthetic token experiment. Shared setup payer exposes wallet associations. Base eATA balances can be stale while delegated. Missing data/errors are inconclusive; use an owner read as positive control. No overall privacy PASS is asserted."
+}

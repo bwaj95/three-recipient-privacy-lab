@@ -1,0 +1,299 @@
+{
+  "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  "depositSignature": "5igbnt8eupH6RZZrZLDb5qyq4CiaJvCc7KT5b6uqWmS3Pnk8SwjBVoiuBr7dZu33J7asAAtLJLpGhNnW47kFpmpa",
+  "paymentSignatures": {
+    "Alice": "361CgWgAhXrBjFGgZXoDMU2Qipx9YvYyUX2SZjWUsxkL29KGG2p9HpPmPhz28qv7XVUSxWgcLXGfhPTfKHPAoyCo",
+    "Bob": "2BG9V2GjZ5TTw8wntevB4cr5g1xDtGfqQuFmERZrUPS3kadmR9nfUgcfJBSM3jVV8mLdhL1HE4aCw6697caZLmZy",
+    "Carol": "63SDrkFch6p5nWL6AvbUKMGuAyfBacZ6gM8QmFjh8FEDcaoEe4kXpnBnMiy2cEowaE34sF9bhauKQepUZzi5KErr"
+  },
+  "withdrawalSignature": "2zxSX3E7fXnbKi3n62V1c6SqENKdbjQG26CUbj811Wi6ivmjhPy9YFfLuPbh6ZPgEJKrfJNhNcyRDNbayPW6jJAU",
+  "views": {
+    "public": [
+      {
+        "at": "2026-09-22T14:01:46.427Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "0.000000",
+            "eATA": "delegated/other layout",
+            "PER_receipt": "absent or filtered",
+            "errors": [],
+            "eataProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "0.000000",
+            "eATA": "delegated/other layout",
+            "PER_receipt": "absent or filtered",
+            "errors": [],
+            "eataProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "0.000000",
+            "eATA": "delegated/other layout",
+            "PER_receipt": "absent or filtered",
+            "errors": [],
+            "eataProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          }
+        ]
+      },
+      {
+        "at": "2026-09-22T15:34:01.653Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "0.000000",
+            "eATA": "1.110000",
+            "PER_receipt": "absent or filtered",
+            "errors": [],
+            "eataProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "0.000000",
+            "eATA": "delegated/other layout",
+            "PER_receipt": "absent or filtered",
+            "errors": [],
+            "eataProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "0.000000",
+            "eATA": "delegated/other layout",
+            "PER_receipt": "absent or filtered",
+            "errors": [],
+            "eataProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          }
+        ]
+      },
+      {
+        "at": "2026-09-22T15:51:35.786Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "1.110000",
+            "eATA": "0.000000",
+            "PER_receipt": "absent or filtered",
+            "errors": [],
+            "eataProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "0.000000",
+            "eATA": "delegated/other layout",
+            "PER_receipt": "absent or filtered",
+            "errors": [],
+            "eataProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "0.000000",
+            "eATA": "delegated/other layout",
+            "PER_receipt": "absent or filtered",
+            "errors": [],
+            "eataProgram": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+          }
+        ]
+      }
+    ],
+    "unauth": [
+      {
+        "at": "2026-09-22T14:02:35.344Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          }
+        ]
+      }
+    ],
+    "Alice": [
+      {
+        "at": "2026-09-22T14:03:20.915Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "1.110000",
+            "eATA": "0.000000",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": [],
+            "eataProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          }
+        ]
+      },
+      {
+        "at": "2026-09-22T15:37:18.311Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "0.000000",
+            "eATA": "1.110000",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": [],
+            "eataProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          }
+        ]
+      }
+    ],
+    "Bob": [
+      {
+        "at": "2026-09-22T14:04:03.145Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "2.220000",
+            "eATA": "0.000000",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": [],
+            "eataProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          }
+        ]
+      },
+      {
+        "at": "2026-09-22T15:37:57.696Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "2.220000",
+            "eATA": "0.000000",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": [],
+            "eataProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          }
+        ]
+      }
+    ],
+    "Carol": [
+      {
+        "at": "2026-09-22T14:04:40.974Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "3.330000",
+            "eATA": "0.000000",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": [],
+            "eataProgram": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
+          }
+        ]
+      }
+    ],
+    "company": [
+      {
+        "at": "2026-09-24T22:56:32.192Z",
+        "rows": [
+          {
+            "recipient": "Alice",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Bob",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          },
+          {
+            "recipient": "Carol",
+            "SPL_balance_view": "0.000000",
+            "eATA": "absent or filtered",
+            "PER_receipt": "0 instruction(s) returned",
+            "errors": []
+          }
+        ]
+      }
+    ]
+  },
+  "limitations": "Public setup links wallets; public funding amount is visible. Missing/error/empty PER data is inconclusive. Public eATA can be stale while delegated. Do not assert complete payroll privacy."
+}

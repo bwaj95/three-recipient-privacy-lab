@@ -1,0 +1,49 @@
+Pre-change SHA-256:
+da0c703989107944ae839e080fc7e7f6c074a65888b03b3e42adab7160419553  lib.rs
+
+The exact pre-change file is reconstructable from `lib.rs.before-ata-mapping`
+by applying the following patch:
+
+--- lib.rs.before-ata-mapping
++++ lib.rs
+@@ settle_private_payment
++        // transferSpl supplies ordinary ATA addresses. Inside the PER,
++        // MagicBlock maps their data to private ephemeral balances.
++        let expected_source_ata = anchor_spl::associated_token::get_associated_token_address(
++            &authority,
++            &DEVNET_USDC_MINT,
++        );
++
++        let expected_destination_ata = anchor_spl::associated_token::get_associated_token_address(
++            &recipient,
++            &DEVNET_USDC_MINT,
++        );
++
+         let (expected_source_eata, _) = Pubkey::find_program_address(
+@@
+-            ctx.accounts.source_eata.key(),
+-            expected_source_eata,
++            ctx.accounts.source_ata.key(),
++            expected_source_ata,
+@@
+-            ctx.accounts.destination_eata.key(),
+-            expected_destination_eata,
++            ctx.accounts.destination_ata.key(),
++            expected_destination_ata,
+@@
+-                    from: ctx.accounts.source_eata.to_account_info(),
+-                    to: ctx.accounts.destination_eata.to_account_info(),
++                    from: ctx.accounts.source_ata.to_account_info(),
++                    to: ctx.accounts.destination_ata.to_account_info(),
+@@ SettlePrivatePayment
+-    pub source_eata: UncheckedAccount<'info>,
++    pub source_ata: UncheckedAccount<'info>,
+@@
+-    pub destination_eata: UncheckedAccount<'info>,
++    pub destination_ata: UncheckedAccount<'info>,
+@@ ReceiptError
+-    #[msg("The supplied source is not the company's devnet USDC eATA")]
++    #[msg("The supplied source is not the company's PER-mapped USDC ATA")]
+@@
+-    #[msg("The supplied destination is not the recipient's devnet USDC eATA")]
++    #[msg("The supplied destination is not the recipient's PER-mapped USDC ATA")]

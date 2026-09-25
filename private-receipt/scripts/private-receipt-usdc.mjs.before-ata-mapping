@@ -1,0 +1,1771 @@
+// Atomic private USDC payment + private receipt experiment for MagicBlock PER.
+// Run from the three-recipient-privacy-lab repository root.
+//
+// Commands:
+//   check
+//   setup
+//   read company|accountant|Carol|Alice|public|unauth
+//   settle
+//   verify
+//   duplicate-test
+//   rollback-setup
+//   rollback-test
+//   all
+
+import fs from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import * as anchor from "@coral-xyz/anchor";
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
+import {
+  getAssociatedTokenAddressSync,
+  TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
+import * as mb from "@magicblock-labs/ephemeral-rollups-sdk";
+import nacl from "tweetnacl";
+
+const BASE_RPC =
+  process.env.SOLANA_DEVNET_RPC || "https://api.devnet.solana.com";
+const PER_RPC = "https://devnet-tee.magicblock.app";
+const DEVNET_GENESIS =
+  "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+
+const PROGRAM_ID = new PublicKey(
+  "FnKajG15Hu4tTENtENAHCau4krTWJUyXUGgdVuLpbTzq",
+);
+const VALIDATOR = new PublicKey(
+  "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
+);
+const USDC_MINT = new PublicKey(
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+);
+const DELEGATION_PROGRAM_ID = new PublicKey(
+  "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh",
+);
+const PERMISSION_PROGRAM_ID =
+  mb.PERMISSION_PROGRAM_ID ||
+  new PublicKey("ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1");
+const MAGIC_PROGRAM_ID =
+  mb.MAGIC_PROGRAM_ID ||
+  new PublicKey("Magic11111111111111111111111111111111111111");
+const EPHEMERAL_VAULT_ID = new PublicKey(
+  "MagicVau1t999999999999999999999999999999999",
+);
+
+const RECEIPT_SEED = Buffer.from("private_receipt");
+const HAPPY_AMOUNT = 10_000n; // 0.01 USDC
+const ROLLBACK_AMOUNT = 9_000_000_000n; // Intentionally unaffordable.
+const WALLET_REVISION = 1;
+
+const IDL_PATH = "private-receipt/target/idl/private_counter.json";
+const WALLETS_PATH = ".lab/privacy-demo.json";
+const STATE_PATH = ".lab/private-receipt-usdc.json";
+
+const EXPECTED_WALLETS = {
+  company: "CE5CcmqDSU1mZtmpT6NiDv7fZDg2edUgerT44RA3F896",
+  Alice: "AA9Wo4TJFcrmzYxCkRWceSxoX7XoT4z8QW6hCjiS7QVi",
+  Bob: "7hmvR9FfBeJtDGPKvyvXhTttxpiQsqqh66QWqAGwJobR",
+  Carol: "HqBr2UFAdaPhvtcS8NhvdbPLEJy75vaiQ48h1jFdu9mj",
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const cleanError = (error) =>
+  String(error?.message || error)
+    .replace(/https?:\/\/\S+/g, "[endpoint]")
+    .slice(0, 600);
+
+function readJson(path) {
+  return fs.existsSync(path)
+    ? JSON.parse(fs.readFileSync(path, "utf8"))
+    : null;
+}
+
+if (!fs.existsSync(IDL_PATH)) {
+  throw new Error(
+    `Missing ${IDL_PATH}. Run this command from the three-recipient-privacy-lab root.`,
+  );
+}
+
+const idl = readJson(IDL_PATH);
+
+if ((idl.address || idl.metadata?.address) !== PROGRAM_ID.toBase58()) {
+  throw new Error("Generated IDL does not match the deployed program ID.");
+}
+
+const oldState = readJson(WALLETS_PATH);
+
+if (!oldState?.keys) {
+  throw new Error(`Missing ${WALLETS_PATH}.`);
+}
+
+const wallets = {};
+
+for (const name of ["company", "Alice", "Bob", "Carol", "outsider"]) {
+  const secret = oldState.keys[name];
+
+  if (!secret) {
+    throw new Error(`${WALLETS_PATH} lacks the ${name} wallet.`);
+  }
+
+  wallets[name] = Keypair.fromSecretKey(Uint8Array.from(secret));
+}
+
+// Reuse the previous outsider wallet as the accountant for this experiment.
+wallets.accountant = wallets.outsider;
+
+for (const [name, expected] of Object.entries(EXPECTED_WALLETS)) {
+  const actual = wallets[name].publicKey.toBase58();
+
+  if (actual !== expected) {
+    throw new Error(
+      `${name} wallet mismatch: expected ${expected}, found ${actual}`,
+    );
+  }
+}
+
+let state = readJson(STATE_PATH) || {
+  version: 1,
+  programId: PROGRAM_ID.toBase58(),
+  plans: {},
+  transactions: {},
+  observations: {},
+};
+
+if (state.version !== 1 || state.programId !== PROGRAM_ID.toBase58()) {
+  throw new Error(`Unexpected state in ${STATE_PATH}.`);
+}
+
+function saveState() {
+  fs.mkdirSync(".lab", {
+    recursive: true,
+    mode: 0o700,
+  });
+
+  const temporary = `${STATE_PATH}.tmp`;
+  const fd = fs.openSync(temporary, "w", 0o600);
+
+  try {
+    fs.writeFileSync(fd, JSON.stringify(state, null, 2));
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  fs.renameSync(temporary, STATE_PATH);
+}
+
+function publicAta(name) {
+  return getAssociatedTokenAddressSync(
+    USDC_MINT,
+    wallets[name].publicKey,
+  );
+}
+
+function ephemeralAta(name) {
+  return mb.deriveEphemeralAta(
+    wallets[name].publicKey,
+    USDC_MINT,
+  )[0];
+}
+
+function formatUsdc(baseUnits) {
+  const value = BigInt(baseUnits);
+
+  return `${value / 1_000_000n}.${(value % 1_000_000n)
+    .toString()
+    .padStart(6, "0")}`;
+}
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest();
+}
+
+function canonicalIntent(kind, receiptIdHex, amount) {
+  return {
+    domain: "PRIVATE_PAYROLL_RECEIPT_V1",
+    kind,
+    paymentId: receiptIdHex,
+    company: wallets.company.publicKey.toBase58(),
+    sourceEata: ephemeralAta("company").toBase58(),
+    recipient: wallets.Carol.publicKey.toBase58(),
+    destinationEata: ephemeralAta("Carol").toBase58(),
+    mint: USDC_MINT.toBase58(),
+    amountBaseUnits: amount.toString(),
+    walletRevision: WALLET_REVISION,
+  };
+}
+
+function ensurePlan(kind) {
+  if (!state.plans[kind]) {
+    const amount =
+      kind === "happy" ? HAPPY_AMOUNT : ROLLBACK_AMOUNT;
+
+    const receiptIdHex = randomBytes(32).toString("hex");
+    const intent = canonicalIntent(kind, receiptIdHex, amount);
+
+    state.plans[kind] = {
+      receiptIdHex,
+      amount: amount.toString(),
+      walletRevision: WALLET_REVISION,
+      intent,
+      intentHashHex: sha256(
+        Buffer.from(JSON.stringify(intent)),
+      ).toString("hex"),
+    };
+
+    saveState();
+  }
+
+  return state.plans[kind];
+}
+
+function receiptAddress(plan) {
+  return PublicKey.findProgramAddressSync(
+    [
+      RECEIPT_SEED,
+      wallets.company.publicKey.toBuffer(),
+      Buffer.from(plan.receiptIdHex, "hex"),
+    ],
+    PROGRAM_ID,
+  )[0];
+}
+
+function permissionAddress(receipt) {
+  if (typeof mb.permissionPdaFromAccount === "function") {
+    return mb.permissionPdaFromAccount(receipt);
+  }
+
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("permission:"),
+      receipt.toBuffer(),
+    ],
+    PERMISSION_PROGRAM_ID,
+  )[0];
+}
+
+// Pace public RPC calls to reduce 429 errors.
+const realFetch = globalThis.fetch;
+let nextRequestAt = 0;
+
+async function pacedFetch(url, options = {}) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await sleep(Math.max(0, nextRequestAt - Date.now()));
+    nextRequestAt = Date.now() + 1_100;
+
+    const response = await realFetch(url, {
+      ...options,
+      signal:
+        options.signal ||
+        AbortSignal.timeout(20_000),
+    });
+
+    const body = await response
+      .clone()
+      .json()
+      .catch(() => null);
+
+    if (
+      response.status !== 429 &&
+      body?.error?.code !== 429
+    ) {
+      return response;
+    }
+
+    await response.arrayBuffer();
+
+    if (attempt === 2) {
+      throw new Error("RPC remained rate limited.");
+    }
+
+    await sleep(8_000 * (attempt + 1));
+  }
+}
+
+globalThis.fetch = pacedFetch;
+
+function connection(endpoint) {
+  return new Connection(endpoint, {
+    commitment: "confirmed",
+    fetch: pacedFetch,
+    disableRetryOnRateLimit: true,
+  });
+}
+
+const base = connection(BASE_RPC);
+const perConnections = new Map();
+
+async function authenticatedPer(name) {
+  if (!perConnections.has(name)) {
+    const signer = wallets[name];
+
+    const auth = await mb.getAuthToken(
+      PER_RPC,
+      signer.publicKey,
+      async (message) =>
+        nacl.sign.detached(message, signer.secretKey),
+    );
+
+    perConnections.set(
+      name,
+      connection(
+        `${PER_RPC}?token=${encodeURIComponent(auth.token)}`,
+      ),
+    );
+  }
+
+  return perConnections.get(name);
+}
+
+function anchorProgram(rpc, signer = wallets.company) {
+  const provider = new anchor.AnchorProvider(
+    rpc,
+    new anchor.Wallet(signer),
+    {
+      commitment: "confirmed",
+      preflightCommitment: "confirmed",
+    },
+  );
+
+  return new anchor.Program(idl, provider);
+}
+
+const coder = new anchor.BorshCoder(idl);
+
+function decodeReceipt(info) {
+  if (!info?.data?.length) {
+    return null;
+  }
+
+  try {
+    return coder.accounts.decodeAny(info.data);
+  } catch {
+    return null;
+  }
+}
+
+function receiptView(receipt) {
+  if (!receipt) {
+    return null;
+  }
+
+  // Anchor IDLs may decode fields as snake_case or camelCase,
+  // depending on the client/code-generation version.
+  const receiptId =
+    receipt.receiptId ?? receipt.receipt_id;
+
+  const sourceEata =
+    receipt.sourceEata ?? receipt.source_eata;
+
+  const destinationEata =
+    receipt.destinationEata ?? receipt.destination_eata;
+
+  const walletRevision =
+    receipt.walletRevision ?? receipt.wallet_revision;
+
+  const intentHash =
+    receipt.intentHash ?? receipt.intent_hash;
+
+  const settledAt =
+    receipt.settledAt ?? receipt.settled_at;
+
+  return {
+    authority: receipt.authority.toBase58(),
+
+    receiptIdHex:
+      Buffer.from(receiptId).toString("hex"),
+
+    accountant:
+      receipt.accountant.toBase58(),
+
+    recipient:
+      receipt.recipient.toBase58(),
+
+    sourceEata:
+      sourceEata.toBase58(),
+
+    destinationEata:
+      destinationEata.toBase58(),
+
+    mint:
+      receipt.mint.toBase58(),
+
+    amountBaseUnits:
+      receipt.amount.toString(),
+
+    amountUSDC:
+      formatUsdc(receipt.amount.toString()),
+
+    walletRevision:
+      walletRevision.toString(),
+
+    intentHashHex:
+      Buffer.from(intentHash).toString("hex"),
+
+    settledAt:
+      settledAt.toString(),
+
+    status:
+      Number(receipt.status),
+
+    statusName:
+      Number(receipt.status) === 1
+        ? "PAID"
+        : "INITIALIZED",
+  };
+}
+
+async function privateBalance(name) {
+  const rpc = await authenticatedPer(name);
+
+  const result = await rpc.getTokenAccountBalance(
+    publicAta(name),
+  );
+
+  return BigInt(result.value.amount);
+}
+
+async function signatureStatus(rpc, signature) {
+  const response = await rpc.getSignatureStatuses(
+    [signature],
+    {
+      searchTransactionHistory: true,
+    },
+  );
+
+  return response.value[0];
+}
+
+function base58(bytes) {
+  const alphabet =
+    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+  let value = 0n;
+  let result = "";
+
+  for (const byte of bytes) {
+    value = value * 256n + BigInt(byte);
+  }
+
+  while (value) {
+    result =
+      alphabet[Number(value % 58n)] + result;
+    value /= 58n;
+  }
+
+  for (const byte of bytes) {
+    if (byte !== 0) {
+      break;
+    }
+
+    result = `1${result}`;
+  }
+
+  return result;
+}
+
+async function prepareSignedTransaction(
+  rpc,
+  transaction,
+  signers,
+) {
+  const latest =
+    await rpc.getLatestBlockhash("confirmed");
+
+  transaction.feePayer = signers[0].publicKey;
+  transaction.recentBlockhash = latest.blockhash;
+  transaction.sign(...signers);
+
+  return {
+    signature: base58(transaction.signature),
+    bytes: transaction
+      .serialize()
+      .toString("base64"),
+    blockhash: latest.blockhash,
+    lastValidBlockHeight:
+      latest.lastValidBlockHeight,
+  };
+}
+
+async function pollForFinalResult(
+  rpc,
+  signature,
+  attempts = 12,
+) {
+  let current =
+    await signatureStatus(rpc, signature);
+
+  for (
+    let attempt = 0;
+    attempt < attempts && !current;
+    attempt++
+  ) {
+    await sleep(2_500);
+    current =
+      await signatureStatus(rpc, signature);
+  }
+
+  return current;
+}
+
+async function sendOnce(
+  label,
+  rpc,
+  transaction,
+  signers,
+) {
+  let record = state.transactions[label];
+
+  if (record?.confirmed) {
+    return record.signature;
+  }
+
+  if (record?.failed) {
+    throw new Error(
+      `${label} previously failed: ${JSON.stringify(
+        record.error,
+      )}`,
+    );
+  }
+
+  if (!record) {
+    record =
+      state.transactions[label] =
+      await prepareSignedTransaction(
+        rpc,
+        transaction,
+        signers,
+      );
+
+    saveState();
+  }
+
+  let current = await signatureStatus(
+    rpc,
+    record.signature,
+  );
+
+  if (!current) {
+    if (
+      (await rpc.getBlockHeight("confirmed")) >
+      record.lastValidBlockHeight
+    ) {
+      throw new Error(
+        `${label}: saved transaction expired with an unresolved outcome. Do not create another payment.`,
+      );
+    }
+
+    try {
+      await rpc.sendRawTransaction(
+        Buffer.from(record.bytes, "base64"),
+        {
+          skipPreflight: false,
+          maxRetries: 0,
+        },
+      );
+    } catch (error) {
+      current = await signatureStatus(
+        rpc,
+        record.signature,
+      );
+
+      if (!current) {
+        throw new Error(
+          `${label}: submission returned ${cleanError(
+            error,
+          )}. Outcome is unknown; rerun this same command.`,
+        );
+      }
+    }
+
+    current ||=
+      await pollForFinalResult(
+        rpc,
+        record.signature,
+      );
+  }
+
+  if (!current) {
+    throw new Error(
+      `${label}: confirmation remains unknown. Rerun this same command; do not create a new transaction.`,
+    );
+  }
+
+  if (current.err) {
+    record.failed = true;
+    record.error = current.err;
+    saveState();
+
+    throw new Error(
+      `${label} failed: ${JSON.stringify(
+        current.err,
+      )}`,
+    );
+  }
+
+  record.confirmed = true;
+  record.confirmationStatus =
+    current.confirmationStatus;
+
+  saveState();
+
+  console.log(
+    `Confirmed ${label}: ${record.signature}`,
+  );
+
+  return record.signature;
+}
+
+async function sendExpectedFailure(
+  label,
+  rpc,
+  transaction,
+  signers,
+) {
+  let record = state.transactions[label];
+
+  if (record?.expectedFailureObserved) {
+    return record.signature;
+  }
+
+  if (record?.confirmed) {
+    throw new Error(
+      `${label} unexpectedly succeeded.`,
+    );
+  }
+
+  if (!record) {
+    record =
+      state.transactions[label] =
+      await prepareSignedTransaction(
+        rpc,
+        transaction,
+        signers,
+      );
+
+    saveState();
+  }
+
+  let current = await signatureStatus(
+    rpc,
+    record.signature,
+  );
+
+  if (!current) {
+    if (
+      (await rpc.getBlockHeight("confirmed")) >
+      record.lastValidBlockHeight
+    ) {
+      throw new Error(
+        `${label}: failed-test transaction expired unseen; outcome unknown.`,
+      );
+    }
+
+    try {
+      await rpc.sendRawTransaction(
+        Buffer.from(record.bytes, "base64"),
+        {
+          skipPreflight: true,
+          maxRetries: 0,
+        },
+      );
+    } catch {
+      // Reconcile using the transaction signature.
+    }
+
+    current =
+      await pollForFinalResult(
+        rpc,
+        record.signature,
+      );
+  }
+
+  if (!current) {
+    throw new Error(
+      `${label}: outcome unknown; rerun this same command.`,
+    );
+  }
+
+  if (!current.err) {
+    record.confirmed = true;
+    saveState();
+
+    throw new Error(
+      `${label} unexpectedly succeeded.`,
+    );
+  }
+
+  record.expectedFailureObserved = true;
+  record.error = current.err;
+
+  saveState();
+
+  console.log(
+    `Observed expected failed transaction: ${record.signature}`,
+  );
+
+  return record.signature;
+}
+
+async function waitForPerReceipt(receipt) {
+  const rpc =
+    await authenticatedPer("company");
+
+  for (let attempt = 0; attempt < 15; attempt++) {
+    const info = await rpc
+      .getAccountInfo(receipt, "confirmed")
+      .catch(() => null);
+
+    if (decodeReceipt(info)) {
+      return decodeReceipt(info);
+    }
+
+    await sleep(2_000);
+  }
+
+  throw new Error(
+    "Receipt delegation has not propagated to the PER yet. Rerun later.",
+  );
+}
+
+function assertInitializedForPlan(receipt, plan) {
+  const view = receiptView(receipt);
+
+  if (!view) {
+    throw new Error(
+      "Receipt is not decodable.",
+    );
+  }
+
+  if (
+    view.authority !==
+    wallets.company.publicKey.toBase58()
+  ) {
+    throw new Error(
+      "Receipt authority mismatch.",
+    );
+  }
+
+  if (
+    view.receiptIdHex !== plan.receiptIdHex
+  ) {
+    throw new Error("Receipt ID mismatch.");
+  }
+
+  return view;
+}
+
+function assertConfiguredForPlan(receipt, plan) {
+  const view =
+    assertInitializedForPlan(receipt, plan);
+
+  if (
+    view.accountant !==
+    wallets.accountant.publicKey.toBase58()
+  ) {
+    throw new Error(
+      "Receipt accountant mismatch.",
+    );
+  }
+
+  if (
+    view.recipient !==
+    wallets.Carol.publicKey.toBase58()
+  ) {
+    throw new Error(
+      "Receipt recipient mismatch.",
+    );
+  }
+
+  return view;
+}
+
+function assertPaidForPlan(receipt, plan) {
+  const view =
+    assertConfiguredForPlan(receipt, plan);
+
+  if (view.status !== 1) {
+    throw new Error(
+      "Receipt is not marked PAID.",
+    );
+  }
+
+  if (view.amountBaseUnits !== plan.amount) {
+    throw new Error(
+      "Receipt amount mismatch.",
+    );
+  }
+
+  if (
+    view.sourceEata !==
+    ephemeralAta("company").toBase58()
+  ) {
+    throw new Error(
+      "Receipt source eATA mismatch.",
+    );
+  }
+
+  if (
+    view.destinationEata !==
+    ephemeralAta("Carol").toBase58()
+  ) {
+    throw new Error(
+      "Receipt destination eATA mismatch.",
+    );
+  }
+
+  if (view.mint !== USDC_MINT.toBase58()) {
+    throw new Error("Receipt mint mismatch.");
+  }
+
+  if (
+    view.walletRevision !==
+    String(plan.walletRevision)
+  ) {
+    throw new Error(
+      "Receipt wallet revision mismatch.",
+    );
+  }
+
+  if (
+    view.intentHashHex !== plan.intentHashHex
+  ) {
+    throw new Error(
+      "Receipt intent hash mismatch.",
+    );
+  }
+
+  return view;
+}
+
+async function check() {
+  if (
+    (await base.getGenesisHash()) !==
+    DEVNET_GENESIS
+  ) {
+    throw new Error(
+      "Refusing a non-devnet Solana RPC.",
+    );
+  }
+
+  const identityResponse =
+    await pacedFetch(PER_RPC, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getIdentity",
+      }),
+    });
+
+  const identity =
+    await identityResponse.json();
+
+  if (
+    identity.result?.identity !==
+    VALIDATOR.toBase58()
+  ) {
+    throw new Error(
+      "Unexpected MagicBlock TEE validator identity.",
+    );
+  }
+
+  const programInfo =
+    await base.getAccountInfo(
+      PROGRAM_ID,
+      "confirmed",
+    );
+
+  if (!programInfo?.executable) {
+    throw new Error(
+      "Receipt program is not executable.",
+    );
+  }
+
+  for (const name of ["company", "Carol"]) {
+    const info = await base.getAccountInfo(
+      ephemeralAta(name),
+      "confirmed",
+    );
+
+    if (
+      !info?.owner.equals(
+        DELEGATION_PROGRAM_ID,
+      )
+    ) {
+      throw new Error(
+        `${name}'s USDC eATA is not currently delegated.`,
+      );
+    }
+  }
+
+  const [companyBalance, carolBalance] =
+    await Promise.all([
+      privateBalance("company"),
+      privateBalance("Carol"),
+    ]);
+
+  console.log({
+    programId: PROGRAM_ID.toBase58(),
+    programExecutable: true,
+    company:
+      wallets.company.publicKey.toBase58(),
+    accountant:
+      wallets.accountant.publicKey.toBase58(),
+    recipient:
+      wallets.Carol.publicKey.toBase58(),
+    companyPrivateUSDC:
+      formatUsdc(companyBalance),
+    carolPrivateUSDC:
+      formatUsdc(carolBalance),
+    happyPaymentUSDC:
+      formatUsdc(HAPPY_AMOUNT),
+  });
+
+  console.log(
+    "Check complete. No blockchain writes were made.",
+  );
+}
+
+async function setupReceipt(kind) {
+  const plan = ensurePlan(kind);
+  const receipt = receiptAddress(plan);
+  const permission =
+    permissionAddress(receipt);
+
+  const receiptId = [
+    ...Buffer.from(
+      plan.receiptIdHex,
+      "hex",
+    ),
+  ];
+
+  const baseProgram = anchorProgram(base);
+
+  let baseInfo =
+    await base.getAccountInfo(
+      receipt,
+      "confirmed",
+    );
+
+  if (!baseInfo) {
+    const initializeTx =
+      await baseProgram.methods
+        .initializeReceipt(receiptId)
+        .accountsPartial({
+          receipt,
+          authority:
+            wallets.company.publicKey,
+          systemProgram:
+            SystemProgram.programId,
+        })
+        .transaction();
+
+    await sendOnce(
+      `${kind}: initialize receipt`,
+      base,
+      initializeTx,
+      [wallets.company],
+    );
+
+    baseInfo =
+      await base.getAccountInfo(
+        receipt,
+        "confirmed",
+      );
+  }
+
+  if (baseInfo?.owner.equals(PROGRAM_ID)) {
+    const localReceipt =
+      decodeReceipt(baseInfo);
+
+    assertInitializedForPlan(
+      localReceipt,
+      plan,
+    );
+
+    const delegateTx =
+      await baseProgram.methods
+        .delegateReceipt(receiptId)
+        .accountsPartial({
+          authority:
+            wallets.company.publicKey,
+          receipt,
+          validator: VALIDATOR,
+        })
+        .transaction();
+
+    await sendOnce(
+      `${kind}: delegate receipt`,
+      base,
+      delegateTx,
+      [wallets.company],
+    );
+  } else if (
+    !baseInfo?.owner.equals(
+      DELEGATION_PROGRAM_ID,
+    )
+  ) {
+    throw new Error(
+      `Receipt has unexpected base owner ${baseInfo?.owner}.`,
+    );
+  }
+
+  await waitForPerReceipt(receipt);
+
+  const companyPer =
+    await authenticatedPer("company");
+
+  const perProgram =
+    anchorProgram(companyPer);
+
+  const permissionInfo =
+    await companyPer
+      .getAccountInfo(
+        permission,
+        "confirmed",
+      )
+      .catch(() => null);
+
+  if (!permissionInfo) {
+    const configureTx =
+      await perProgram.methods
+        .configureAccess(
+          wallets.accountant.publicKey,
+          wallets.Carol.publicKey,
+        )
+        .accountsPartial({
+          authority:
+            wallets.company.publicKey,
+          receipt,
+          permission,
+          permissionProgram:
+            PERMISSION_PROGRAM_ID,
+          ephemeralVault:
+            EPHEMERAL_VAULT_ID,
+          magicProgram:
+            MAGIC_PROGRAM_ID,
+        })
+        .transaction();
+
+    await sendOnce(
+      `${kind}: configure private access`,
+      companyPer,
+      configureTx,
+      [wallets.company],
+    );
+  }
+
+  const configured = decodeReceipt(
+    await companyPer.getAccountInfo(
+      receipt,
+      "confirmed",
+    ),
+  );
+
+  const view =
+    assertConfiguredForPlan(
+      configured,
+      plan,
+    );
+
+  console.log({
+    experiment: kind,
+    receipt: receipt.toBase58(),
+    permission: permission.toBase58(),
+    status: view.statusName,
+    privateReaders: [
+      "company",
+      "accountant",
+      "Carol",
+    ],
+  });
+}
+
+async function fetchReceiptAs(
+  kind,
+  viewer,
+) {
+  const plan = ensurePlan(kind);
+  const receipt = receiptAddress(plan);
+
+  let rpc;
+  let description;
+
+  if (viewer === "public") {
+    rpc = base;
+    description = "Solana public RPC";
+  } else if (viewer === "unauth") {
+    rpc = connection(PER_RPC);
+    description =
+      "PER without authentication";
+  } else {
+    if (!wallets[viewer]) {
+      throw new Error(
+        `Unknown viewer ${viewer}.`,
+      );
+    }
+
+    rpc = await authenticatedPer(viewer);
+    description =
+      `PER authenticated as ${viewer}`;
+  }
+
+  try {
+    const info =
+      await rpc.getAccountInfo(
+        receipt,
+        "confirmed",
+      );
+
+    const decoded =
+      decodeReceipt(info);
+
+    return {
+      viewer,
+      description,
+      address: receipt.toBase58(),
+      returned: Boolean(info),
+      owner:
+        info?.owner.toBase58() || null,
+      dataLength:
+        info?.data?.length || 0,
+      decoded: receiptView(decoded),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      viewer,
+      description,
+      address: receipt.toBase58(),
+      returned: false,
+      owner: null,
+      dataLength: 0,
+      decoded: null,
+      error: cleanError(error),
+    };
+  }
+}
+
+async function readCommand(viewer) {
+  const aliases = {
+    carol: "Carol",
+    alice: "Alice",
+    bob: "Bob",
+    outsider: "accountant",
+  };
+
+  viewer = aliases[viewer] || viewer;
+
+  const result = await fetchReceiptAs(
+    "happy",
+    viewer,
+  );
+
+  console.dir(result, {
+    depth: null,
+  });
+
+  if (!result.decoded) {
+    console.log(
+      "No private receipt fields were decoded in this view.",
+    );
+  }
+}
+
+async function settleHappyPayment() {
+  const plan = ensurePlan("happy");
+  const receipt = receiptAddress(plan);
+
+  const companyPer =
+    await authenticatedPer("company");
+
+  const program =
+    anchorProgram(companyPer);
+
+  let currentReceipt = decodeReceipt(
+    await companyPer.getAccountInfo(
+      receipt,
+      "confirmed",
+    ),
+  );
+
+  assertConfiguredForPlan(
+    currentReceipt,
+    plan,
+  );
+
+  if (Number(currentReceipt.status) !== 1) {
+    if (!state.observations.happyBefore) {
+      state.observations.happyBefore = {
+        company:
+          (
+            await privateBalance("company")
+          ).toString(),
+        Carol:
+          (
+            await privateBalance("Carol")
+          ).toString(),
+      };
+
+      saveState();
+    }
+
+    const settleTx =
+      await program.methods
+        .settlePrivatePayment(
+          wallets.Carol.publicKey,
+          new anchor.BN(plan.amount),
+          new anchor.BN(
+            plan.walletRevision,
+          ),
+          [
+            ...Buffer.from(
+              plan.intentHashHex,
+              "hex",
+            ),
+          ],
+        )
+        .accountsPartial({
+          authority:
+            wallets.company.publicKey,
+          receipt,
+          sourceEata:
+            ephemeralAta("company"),
+          destinationEata:
+            ephemeralAta("Carol"),
+          tokenProgram:
+            TOKEN_PROGRAM_ID,
+        })
+        .transaction();
+
+    await sendOnce(
+      "happy: atomic USDC payment and receipt",
+      companyPer,
+      settleTx,
+      [wallets.company],
+    );
+  }
+
+  currentReceipt = decodeReceipt(
+    await companyPer.getAccountInfo(
+      receipt,
+      "confirmed",
+    ),
+  );
+
+  const paid = assertPaidForPlan(
+    currentReceipt,
+    plan,
+  );
+
+  const companyAfter =
+    await privateBalance("company");
+
+  const carolAfter =
+    await privateBalance("Carol");
+
+  const before =
+    state.observations.happyBefore;
+
+  if (!before) {
+    throw new Error(
+      "Missing pre-payment balance observation.",
+    );
+  }
+
+  if (
+    companyAfter !==
+    BigInt(before.company) -
+    BigInt(plan.amount)
+  ) {
+    throw new Error(
+      "Company private balance did not decrease by exactly 0.01 USDC.",
+    );
+  }
+
+  if (
+    carolAfter !==
+    BigInt(before.Carol) +
+    BigInt(plan.amount)
+  ) {
+    throw new Error(
+      "Carol private balance did not increase by exactly 0.01 USDC.",
+    );
+  }
+
+  state.observations.happyAfter = {
+    company: companyAfter.toString(),
+    Carol: carolAfter.toString(),
+  };
+
+  saveState();
+
+  console.log({
+    result:
+      "ATOMIC PRIVATE PAYMENT CONFIRMED",
+    receiptStatus: paid.statusName,
+    amountUSDC: paid.amountUSDC,
+    companyBefore:
+      formatUsdc(before.company),
+    companyAfter:
+      formatUsdc(companyAfter),
+    carolBefore:
+      formatUsdc(before.Carol),
+    carolAfter:
+      formatUsdc(carolAfter),
+    transaction:
+      state.transactions[
+        "happy: atomic USDC payment and receipt"
+      ].signature,
+  });
+}
+
+async function verifyPrivacyAndAccounting() {
+  const plan = ensurePlan("happy");
+  const authorized = {};
+
+  for (const viewer of [
+    "company",
+    "accountant",
+    "Carol",
+  ]) {
+    const result =
+      await fetchReceiptAs(
+        "happy",
+        viewer,
+      );
+
+    if (!result.decoded) {
+      throw new Error(
+        `${viewer} could not decode the receipt.`,
+      );
+    }
+
+    authorized[viewer] =
+      assertPaidForPlan(
+        result.decoded,
+        plan,
+      );
+  }
+
+  const restricted = {};
+
+  for (const viewer of [
+    "Alice",
+    "public",
+    "unauth",
+  ]) {
+    const result =
+      await fetchReceiptAs(
+        "happy",
+        viewer,
+      );
+
+    if (
+      result.decoded?.status === 1
+    ) {
+      throw new Error(
+        `${viewer} unexpectedly decoded the paid private receipt.`,
+      );
+    }
+
+    restricted[viewer] = result.error
+      ? "blocked/error"
+      : result.returned
+        ? `opaque ${result.dataLength}-byte account`
+        : "absent or filtered";
+  }
+
+  const companyBalance =
+    await privateBalance("company");
+
+  const carolBalance =
+    await privateBalance("Carol");
+
+  console.log(
+    "Authorized accounting views:",
+  );
+
+  console.table(
+    Object.entries(authorized).map(
+      ([viewer, receipt]) => ({
+        viewer,
+        status: receipt.statusName,
+        recipient: receipt.recipient,
+        amountUSDC:
+          receipt.amountUSDC,
+        intentHash:
+          receipt.intentHashHex,
+      }),
+    ),
+  );
+
+  console.log("Restricted views:");
+
+  console.table(
+    Object.entries(restricted).map(
+      ([viewer, result]) => ({
+        viewer,
+        result,
+      }),
+    ),
+  );
+
+  console.log({
+    companyPrivateUSDC:
+      formatUsdc(companyBalance),
+    carolPrivateUSDC:
+      formatUsdc(carolBalance),
+    conclusion:
+      "Company, accountant and Carol can audit this payment; Alice, public RPC and unauthenticated PER cannot decode the paid receipt.",
+  });
+}
+
+async function duplicatePaymentTest() {
+  const plan = ensurePlan("happy");
+  const receipt = receiptAddress(plan);
+
+  const companyPer =
+    await authenticatedPer("company");
+
+  const program =
+    anchorProgram(companyPer);
+
+  const original = assertPaidForPlan(
+    decodeReceipt(
+      await companyPer.getAccountInfo(
+        receipt,
+        "confirmed",
+      ),
+    ),
+    plan,
+  );
+
+  if (
+    !state.observations.duplicateBefore
+  ) {
+    state.observations.duplicateBefore = {
+      company:
+        (
+          await privateBalance("company")
+        ).toString(),
+      Carol:
+        (
+          await privateBalance("Carol")
+        ).toString(),
+    };
+
+    saveState();
+  }
+
+  const duplicateTx =
+    await program.methods
+      .settlePrivatePayment(
+        wallets.Carol.publicKey,
+        new anchor.BN(plan.amount),
+        new anchor.BN(
+          plan.walletRevision,
+        ),
+        [
+          ...Buffer.from(
+            plan.intentHashHex,
+            "hex",
+          ),
+        ],
+      )
+      .accountsPartial({
+        authority:
+          wallets.company.publicKey,
+        receipt,
+        sourceEata:
+          ephemeralAta("company"),
+        destinationEata:
+          ephemeralAta("Carol"),
+        tokenProgram:
+          TOKEN_PROGRAM_ID,
+      })
+      .transaction();
+
+  await sendExpectedFailure(
+    "happy: duplicate settlement rejected",
+    companyPer,
+    duplicateTx,
+    [wallets.company],
+  );
+
+  const companyAfter =
+    await privateBalance("company");
+
+  const carolAfter =
+    await privateBalance("Carol");
+
+  const after = assertPaidForPlan(
+    decodeReceipt(
+      await companyPer.getAccountInfo(
+        receipt,
+        "confirmed",
+      ),
+    ),
+    plan,
+  );
+
+  const before =
+    state.observations.duplicateBefore;
+
+  if (
+    companyAfter !==
+    BigInt(before.company) ||
+    carolAfter !==
+    BigInt(before.Carol)
+  ) {
+    throw new Error(
+      "Duplicate settlement changed a private balance.",
+    );
+  }
+
+  if (
+    after.settledAt !==
+    original.settledAt ||
+    after.intentHashHex !==
+    original.intentHashHex ||
+    after.amountBaseUnits !==
+    original.amountBaseUnits
+  ) {
+    throw new Error(
+      "Duplicate settlement altered the paid receipt.",
+    );
+  }
+
+  console.log({
+    result:
+      "DUPLICATE PAYMENT REJECTED",
+    transaction:
+      state.transactions[
+        "happy: duplicate settlement rejected"
+      ].signature,
+    companyBalanceUnchanged:
+      formatUsdc(companyAfter),
+    carolBalanceUnchanged:
+      formatUsdc(carolAfter),
+    receiptStill: after.statusName,
+  });
+}
+
+async function rollbackTest() {
+  const plan = ensurePlan("rollback");
+  const receipt = receiptAddress(plan);
+
+  const companyPer =
+    await authenticatedPer("company");
+
+  const program =
+    anchorProgram(companyPer);
+
+  const beforeReceipt = decodeReceipt(
+    await companyPer.getAccountInfo(
+      receipt,
+      "confirmed",
+    ),
+  );
+
+  const beforeView =
+    assertConfiguredForPlan(
+      beforeReceipt,
+      plan,
+    );
+
+  if (beforeView.status !== 0) {
+    throw new Error(
+      "Rollback receipt is not in INITIALIZED state.",
+    );
+  }
+
+  if (
+    !state.observations.rollbackBefore
+  ) {
+    state.observations.rollbackBefore = {
+      company:
+        (
+          await privateBalance("company")
+        ).toString(),
+      Carol:
+        (
+          await privateBalance("Carol")
+        ).toString(),
+    };
+
+    saveState();
+  }
+
+  const failedTx =
+    await program.methods
+      .settlePrivatePayment(
+        wallets.Carol.publicKey,
+        new anchor.BN(plan.amount),
+        new anchor.BN(
+          plan.walletRevision,
+        ),
+        [
+          ...Buffer.from(
+            plan.intentHashHex,
+            "hex",
+          ),
+        ],
+      )
+      .accountsPartial({
+        authority:
+          wallets.company.publicKey,
+        receipt,
+        sourceEata:
+          ephemeralAta("company"),
+        destinationEata:
+          ephemeralAta("Carol"),
+        tokenProgram:
+          TOKEN_PROGRAM_ID,
+      })
+      .transaction();
+
+  await sendExpectedFailure(
+    "rollback: intentionally unaffordable atomic payment",
+    companyPer,
+    failedTx,
+    [wallets.company],
+  );
+
+  const companyAfter =
+    await privateBalance("company");
+
+  const carolAfter =
+    await privateBalance("Carol");
+
+  const afterReceipt = decodeReceipt(
+    await companyPer.getAccountInfo(
+      receipt,
+      "confirmed",
+    ),
+  );
+
+  const afterView =
+    assertConfiguredForPlan(
+      afterReceipt,
+      plan,
+    );
+
+  const before =
+    state.observations.rollbackBefore;
+
+  if (
+    companyAfter !==
+    BigInt(before.company) ||
+    carolAfter !==
+    BigInt(before.Carol)
+  ) {
+    throw new Error(
+      "A balance changed during the failed atomic transaction.",
+    );
+  }
+
+  if (
+    afterView.status !== 0 ||
+    afterView.amountBaseUnits !== "0" ||
+    afterView.settledAt !== "0"
+  ) {
+    throw new Error(
+      "Failed payment left a partially updated receipt.",
+    );
+  }
+
+  console.log({
+    result:
+      "ATOMIC ROLLBACK CONFIRMED",
+    transaction:
+      state.transactions[
+        "rollback: intentionally unaffordable atomic payment"
+      ].signature,
+    transactionError:
+      state.transactions[
+        "rollback: intentionally unaffordable atomic payment"
+      ].error,
+    companyBalanceUnchanged:
+      formatUsdc(companyAfter),
+    carolBalanceUnchanged:
+      formatUsdc(carolAfter),
+    receiptStatus:
+      afterView.statusName,
+    receiptAmountBaseUnits:
+      afterView.amountBaseUnits,
+  });
+}
+
+async function main() {
+  const [command = "check", argument] =
+    process.argv.slice(2);
+
+  if (command === "check") {
+    return check();
+  }
+
+  if (command === "setup") {
+    return setupReceipt("happy");
+  }
+
+  if (command === "read") {
+    if (!argument) {
+      throw new Error(
+        "Usage: read company|accountant|Carol|Alice|public|unauth",
+      );
+    }
+
+    return readCommand(argument);
+  }
+
+  if (command === "settle") {
+    return settleHappyPayment();
+  }
+
+  if (command === "verify") {
+    return verifyPrivacyAndAccounting();
+  }
+
+  if (command === "duplicate-test") {
+    return duplicatePaymentTest();
+  }
+
+  if (command === "rollback-setup") {
+    return setupReceipt("rollback");
+  }
+
+  if (command === "rollback-test") {
+    return rollbackTest();
+  }
+
+  if (command === "all") {
+    await check();
+    await setupReceipt("happy");
+    await settleHappyPayment();
+    await verifyPrivacyAndAccounting();
+    await duplicatePaymentTest();
+    await setupReceipt("rollback");
+
+    return rollbackTest();
+  }
+
+  throw new Error(
+    "Usage: check | setup | read <viewer> | settle | verify | duplicate-test | rollback-setup | rollback-test | all",
+  );
+}
+
+main().catch((error) => {
+  console.error(cleanError(error));
+  process.exitCode = 1;
+});

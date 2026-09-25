@@ -1,0 +1,17 @@
+Pre-change SHA-256:
+989cb33b785f542db5993216e18ee84edf3ab803fd93f841c83277e980c3f844  private-receipt-usdc.mjs
+
+The pre-change aggregate verifier always passed `fetchReceiptAs().decoded`
+back through `receiptView()`. That value was already normalized, so its public
+keys were strings rather than PublicKey objects and `.toBase58()` failed.
+
+To restore the pre-change assertion behavior, replace:
+
+  const view =
+    receipt?.receiptIdHex && typeof receipt.authority === "string"
+      ? receipt
+      : receiptView(receipt);
+
+with:
+
+  const view = receiptView(receipt);

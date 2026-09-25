@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-09-15T19:27:06.451Z",
+  "kind": "unsigned SDK instructions, not network execution",
+  "cases": [
+    {
+      "recipient": "Alice",
+      "networkCalls": 0,
+      "transactionsSubmitted": 0,
+      "standardSplTransfer": true,
+      "amountReadableInInstruction": "1110000",
+      "sameInstructionAsPublicMode": true
+    },
+    {
+      "recipient": "Bob",
+      "networkCalls": 0,
+      "transactionsSubmitted": 0,
+      "standardSplTransfer": true,
+      "amountReadableInInstruction": "2220000",
+      "sameInstructionAsPublicMode": true
+    },
+    {
+      "recipient": "Carol",
+      "networkCalls": 0,
+      "transactionsSubmitted": 0,
+      "standardSplTransfer": true,
+      "amountReadableInInstruction": "3330000",
+      "sameInstructionAsPublicMode": true
+    }
+  ],
+  "pdaResult": "helper rejected PDA: Error; use a separately verified program/CPI path",
+  "conclusion": "The visibility option alone does not encrypt intra-PER transfer instruction bytes. Verify PER account permissions, transaction filtering, and commit/withdrawal exposure separately."
+}

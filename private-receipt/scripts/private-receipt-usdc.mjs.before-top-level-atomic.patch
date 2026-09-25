@@ -1,0 +1,17 @@
+Pre-change SHA-256:
+c7743fa3111239aa75248f8a850f3f8b09cf69a26b8df827b4c858587bdb430c  private-receipt-usdc.mjs
+
+The exact pre-change file is `private-receipt-usdc.mjs.before-access-diagnostic`
+plus the following replacement at each of the three settlement builders:
+
+             destinationAta: publicAta("Carol"),
+
+becomes:
+
+             destinationAta:
+               process.env.DIAGNOSE_ACCESS === "1"
+                 ? publicAta("company")
+                 : publicAta("Carol"),
+
+The earlier ordinary-ATA and simulation changes remain preserved separately in
+the existing `before-ata-mapping` and `before-simulation-branch` files.

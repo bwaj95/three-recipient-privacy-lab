@@ -1,0 +1,16 @@
+node_modules/
+.lab/
+reports/live-*.json
+reports/preflight.json
+*.log
+**/.lab/
+**/node_modules/
+target/
+**/target/
+magicblock-reference/
+.env
+.env.*
+!.env.example
+**/id.json
+**/*keypair*.json
+*.pem

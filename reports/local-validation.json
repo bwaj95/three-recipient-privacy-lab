@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-09-15T18:37:34.309561+00:00",
+  "scope": "Local application model and JavaScript syntax only; no SDK installation or live transactions",
+  "node": "v24.19.0",
+  "syntax": [
+    {
+      "file": "src/core.mjs",
+      "exitCode": 0,
+      "output": ""
+    },
+    {
+      "file": "src/io.mjs",
+      "exitCode": 0,
+      "output": ""
+    },
+    {
+      "file": "src/live.mjs",
+      "exitCode": 0,
+      "output": ""
+    },
+    {
+      "file": "src/preflight.mjs",
+      "exitCode": 0,
+      "output": ""
+    },
+    {
+      "file": "test/core.test.mjs",
+      "exitCode": 0,
+      "output": ""
+    }
+  ],
+  "tests": {
+    "exitCode": 0,
+    "output": "TAP version 13\n# Subtest: two different authorized signatures approve the exact payment\nok 1 - two different authorized signatures approve the exact payment\n  ---\n  duration_ms: 4.802387\n  type: 'test'\n  ...\n# Subtest: one signature and duplicate signatures cannot meet the threshold\nok 2 - one signature and duplicate signatures cannot meet the threshold\n  ---\n  duration_ms: 1.419937\n  type: 'test'\n  ...\n# Subtest: unknown signer cannot authorize a payout\nok 3 - unknown signer cannot authorize a payout\n  ---\n  duration_ms: 0.696228\n  type: 'test'\n  ...\n# Subtest: recipient, amount, mint, vault, revision, and ID changes invalidate approval\nok 4 - recipient, amount, mint, vault, revision, and ID changes invalidate approval\n  ---\n  duration_ms: 1.851907\n  type: 'test'\n  ...\n# Subtest: wallet rotation removes approvals and increments revision\nok 5 - wallet rotation removes approvals and increments revision\n  ---\n  duration_ms: 1.468239\n  type: 'test'\n  ...\n# Subtest: unknown delivery blocks rotation and any second payment attempt\nok 6 - unknown delivery blocks rotation and any second payment attempt\n  ---\n  duration_ms: 1.137342\n  type: 'test'\n  ...\n# Subtest: timeout or absent status retains processing and reserved funds\nok 7 - timeout or absent status retains processing and reserved funds\n  ---\n  duration_ms: 0.660263\n  type: 'test'\n  ...\n# Subtest: transaction confirmation without recipient evidence never marks paid\nok 8 - transaction confirmation without recipient evidence never marks paid\n  ---\n  duration_ms: 0.53828\n  type: 'test'\n  ...\n# Subtest: PER credit remains distinct from verified base-chain settlement\nok 9 - PER credit remains distinct from verified base-chain settlement\n  ---\n  duration_ms: 0.718271\n  type: 'test'\n  ...\n# Subtest: one recipient failure does not undo the other recipients\nok 10 - one recipient failure does not undo the other recipients\n  ---\n  duration_ms: 1.092584\n  type: 'test'\n  ...\n# Subtest: invalid amounts are rejected before signing\nok 11 - invalid amounts are rejected before signing\n  ---\n  duration_ms: 0.765813\n  type: 'test'\n  ...\n# Subtest: different salts avoid deterministic salary commitments\nok 12 - different salts avoid deterministic salary commitments\n  ---\n  duration_ms: 0.512681\n  type: 'test'\n  ...\n# Subtest: network guard rejects mainnet and arbitrary genesis values\nok 13 - network guard rejects mainnet and arbitrary genesis values\n  ---\n  duration_ms: 0.188323\n  type: 'test'\n  ...\n# Subtest: public readable eATA bytes reveal the amount in a synthetic fixture\nok 14 - public readable eATA bytes reveal the amount in a synthetic fixture\n  ---\n  duration_ms: 0.275384\n  type: 'test'\n  ...\n# Subtest: RPC failures and absent accounts are never counted as proof of privacy\nok 15 - RPC failures and absent accounts are never counted as proof of privacy\n  ---\n  duration_ms: 0.145399\n  type: 'test'\n  ...\n# Subtest: base58 encoder preserves leading zeros and a known one-byte vector\nok 16 - base58 encoder preserves leading zeros and a known one-byte vector\n  ---\n  duration_ms: 1.378765\n  type: 'test'\n  ...\n1..16\n# tests 16\n# suites 0\n# pass 16\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 180.034488\n"
+  },
+  "transactionsSubmitted": 0,
+  "liveWorkflowVerified": false
+}

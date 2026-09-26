@@ -1,0 +1,19 @@
+[toolchain]
+anchor_version = "1.0.2"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+pda_custody_private_payment = "AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo"
+
+[programs.devnet]
+pda_custody_private_payment = "AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "node --test tests/*.test.mjs"

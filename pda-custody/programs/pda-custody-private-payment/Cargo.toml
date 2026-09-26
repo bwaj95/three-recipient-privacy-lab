@@ -1,0 +1,31 @@
+[package]
+name = "pda-custody-private-payment"
+version = "0.1.0"
+description = "Program-owned private USDC custody and atomic payment receipts on MagicBlock PER"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "pda_custody_private_payment"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+custom-heap = []
+custom-panic = []
+anchor-debug = []
+test-mode = []
+test-failure-injection = []
+
+[dependencies]
+anchor-lang = { version = "=1.0.2", features = ["init-if-needed"] }
+anchor-spl = "=1.0.2"
+ephemeral-rollups-sdk = { version = "=0.16.2", features = ["anchor", "access-control"] }
+ephemeral-spl-api = { git = "https://github.com/magicblock-labs/ephemeral-spl-token.git", rev = "0d2428150f9ee9867ec5c3a388834b914eee2c2d" }
+solana-address = "2.0"
+solana-sha256-hasher = "3.1.0"
+wheels = { git = "https://github.com/magicblock-labs/magicblock-wheels.git" }

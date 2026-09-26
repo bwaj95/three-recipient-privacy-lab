@@ -404,3 +404,25 @@
   - None locally. Deployment remains gated on a fresh coherent read-only check of the fixed MagicBlock devnet endpoint and deployer resources.
 - Exact next step:
   - Stage only the corrected experiment source/tests/public documentation, scan the staged content, commit as `fix: separate accounting and per-receipt access`, push only the experiment branch, and verify remote `main` remains unchanged before the deployment gate.
+
+### 2026-09-26 — Pre-deployment commit pushed; loader invocation reconciled as no-write
+
+- Files inspected:
+  - Staged source/test/documentation set; local and remote branch heads; final artifact/keypair/IDL/source IDs; fixed-RPC genesis, TEE, mint decimals, program/buffer balances, deployer balance, and rent estimates.
+- Evidence:
+  - Corrected source commit `0e3383d65e4f789e3c3ce62ccadfbce20c4beb43` was pushed only to `experiment/pda-custody-private-payment`. Remote `main` remained `6aea403fe7126ede6d6ab4a2661ef9b123f80b18`.
+  - Final gate confirmed the expected genesis, TEE identity, six-decimal Circle devnet USDC mint, absent program, exact program ID/hash/size, deployer `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`, 5,160,560,297 lamports, and expected upgrade authority equal to that deployer.
+  - Exact rent: 2,341,539,640 lamports for ProgramData, 833,120 for the program account, and 2,341,499,000 temporary buffer rent. Net deployment rent plus bounded setup remains below 3.5 SOL; peak buffer-plus-program allocation fits the deployer balance.
+  - Dedicated ignored 0600 deployment-buffer keypair public key is `HMUJssvAgtjonKX1oHe7gXDuV88ftUDWLaurogZkfa1F`.
+  - The first guarded command stopped on a read-only timeout before invoking the loader. A later loader invocation returned an account-read transport error and no signature.
+  - Reconciliation at the same current devnet slot found program balance 0, buffer balance 0, and deployer balance unchanged exactly at 5,160,560,297 lamports. Therefore no buffer creation, upload, deployment, fee, or other blockchain write landed.
+- Commands run:
+  - Explicit staging/scans/commit; SSH push and remote-head verification; live read-only inspect; fixed-RPC balance/rent/absence checks; dedicated buffer generation; guarded RPC deploy command; post-error program/buffer/deployer reconciliation; MagicBlock status API and account-method health probes.
+- Changes made:
+  - Wrote an ignored, 0600 public-safe deployment preflight record and this status entry. No tracked source changed after the committed artifact build.
+- Tests/simulations:
+  - No payment/setup simulation or submission occurred. No deployment transaction signature exists because the loader failed before any chain write.
+- Current blocker:
+  - The fixed base RPC's `getAccountInfo` and `getMultipleAccounts` methods currently time out even for the USDC mint, while genesis and balance methods respond. The Solana loader requires those account reads and cannot safely start until they recover.
+- Exact next step:
+  - Continue read-only monitoring. Once `getAccountInfo` succeeds, reverify genesis plus zero program/buffer balances, then make one reconciled loader invocation using the same exact artifact and known buffer; do not use another RPC endpoint.

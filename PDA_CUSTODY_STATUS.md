@@ -467,3 +467,102 @@
   - None. Deployment has not yet been invoked.
 - Exact next step:
   - Run syntax/unit/hygiene checks, commit and push only the endpoint transition on the experiment branch, recheck genesis/hash/key/balance immediately before the loader, then deploy exactly once with the known buffer and reconcile before setup.
+
+### 2026-09-27 — Manual devnet deployment independently reconciled
+
+- Files inspected:
+  - Approved local production artifact/keypair and the deployed program/program-data accounts through the trusted devnet RPC; current experiment branch remains isolated from `main`.
+- Evidence:
+  - Deployment signature `5TdXaPeBaHKCVMHY471Ykw88Jy3A38cU3T2q88Qy8AJqWE1UHXjdNMB3ahCemRAKhCkrVQRKxVXcaBJz9yeGCbR5` is finalized with `Status: Ok` at slot 504520046.
+  - Program `AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo` is owned by the upgradeable loader and resolves to ProgramData `8L3bqttWFggYQLT2vEh242BaGJE2PXhiTmtBJBywYqbF` with upgrade authority `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`.
+  - The known deployment buffer was consumed to zero by the successful deployment transaction.
+  - A finalized program dump is exactly 460,760 bytes and byte-for-byte identical to the approved artifact; both SHA-256 values are `86ec1ac50ce2601eb4c265b0b3f19c9f6b5da1298adc2564f56082cd2454d37e`.
+- Commands run:
+  - Devnet genesis verification through the trusted environment-provided RPC; finalized signature confirmation; `solana program show`; `solana program dump`; SHA-256, size, and `cmp` verification. The RPC URL/API key was not written to any repository file.
+- Changes made:
+  - Added only this public-safe reconciliation record. No program deployment, upgrade, close, or other blockchain write was performed by this reconciliation step.
+- Tests/simulations:
+  - Read-only deployed-byte comparison passed. Live setup/payment tests have not started.
+- Current blocker:
+  - None. The live runner must be adapted to consume the trusted RPC environment variable without recording it, and the local suites must pass before setup.
+- Exact next step:
+  - Review README/security/live scripts/current branch; update the base-RPC selector without persisting its value; rerun Rust and JavaScript tests; create a fresh isolated fixture; then simulate and submit the minimal devnet setup one reconciled transaction at a time.
+
+### 2026-09-27 — Post-deployment local baseline passes
+
+- Files inspected:
+  - Current README, security audit, status history, live runner, shared client/state lifecycle, branch/HEAD, and one-payment versus two-payment audit paths.
+- Evidence:
+  - Branch is `experiment/pda-custody-private-payment` at `7441553246a871d659b8f223995845a919e3a1f7`; only this status file was tracked-modified before the client adaptation.
+  - The program security design remains two-approver/PDA-custody/one-instruction atomic. The existing live audit assumes both payments exist, while the current authorization permits one payment only.
+- Commands run:
+  - `cargo test --workspace`; `npm run check`; `npm test`; targeted source/documentation inspection and Git status checks.
+- Changes made:
+  - Added only this milestone entry. No blockchain write occurred.
+- Tests/simulations:
+  - Rust: 18 passed, 0 failed. JavaScript: 26 passed, 0 failed. Syntax checks passed. No live transaction or simulation was submitted during this milestone.
+- Current blocker:
+  - Client-only endpoint/state-path and single-payment audit adaptation is required before generating the new fixture.
+- Exact next step:
+  - Add safe environment-based base-RPC selection, an isolated `.lab` fixture path, and an A-only visibility/permission audit; rerun tests before any funding/setup transaction.
+
+### 2026-09-27 — Single-payment live client safely adapted
+
+- Files inspected:
+  - Shared RPC/state-path selection, transaction preparation/simulation/submission/reconciliation, funding limits, setup/payment dispatch, permission decoding, authenticated/raw access probes, and live audit expectations.
+- Evidence:
+  - The runner verifies devnet genesis and the six-decimal mint before every submitted base/PER action; PER identity is additionally pinned for PER actions.
+  - Every transaction is serialized and recorded before submission, simulated with signature verification, sent once with `maxRetries: 0`, and reconciled by its exact signature.
+  - Latest authorization is enforced client-side: only payment A can be set up/executed; total live outflow is capped at 10,000 base units; recipient B remains an unfunded unrelated authenticated visibility control.
+- Commands run:
+  - `npm run check`; `npm test`; `git diff --check`; targeted live-runner/client review.
+- Changes made:
+  - Base RPC now prefers `SOLANA_DEVNET_RPC_URL` without logging/persisting it. Optional fixture selection is constrained to the repository `.lab` directory.
+  - Live commands for payment B were removed; SOL funding covers only company, two approvers, and recipient A.
+  - The access audit now checks the single real receipt against company/accountant/recipient-A positive controls and approver/recipient-B/outsider/unauthenticated denial controls, plus the base-layer sparse-shell check and exact permission member flags.
+- Tests/simulations:
+  - JavaScript: 26 passed, 0 failed; all syntax checks and whitespace validation passed. No blockchain write occurred.
+- Current blocker:
+  - None. A fresh fixture has not yet been generated.
+- Exact next step:
+  - Confirm the new ignored fixture path is absent, initialize it with mode 0600, run read-only inspect/derivation checks through the trusted devnet RPC and PER, then begin minimal funding only after those checks pass.
+
+### 2026-09-27 — Fresh live fixture and read-only gate pass
+
+- Files inspected:
+  - Newly generated ignored fixture header/public keys only, filesystem mode/ignore rule, derived payment-A addresses, deployed program availability, mint decimals, genesis, and PER identity.
+- Evidence:
+  - Fresh fixture `.lab/pda-custody-live-20260927.json` was created without overwriting any prior `.lab` history, has mode 0600, is ignored, and contained zero transaction records at inspection.
+  - Company, independent accountant, two approvers, recipient A, unrelated recipient B, and outsider are seven distinct new identities. Payment A is exactly 10,000 base units with new vault/intent/receipt PDAs.
+  - Read-only inspect returned the exact devnet genesis, pinned TEE validator, Circle devnet mint with 6 decimals, and `programDeployed: true`.
+  - An invalid non-base58 legacy-address literal caused the first inspect process to stop during module initialization; it was removed while the actual legacy deployed program guard remains. No RPC request or transaction occurred in that failed process.
+- Commands run:
+  - Fresh-state initialization; mode/ignore checks; `npm run check`; `npm test`; live `inspect` through the trusted devnet RPC plus fixed PER.
+- Changes made:
+  - Created the ignored secret fixture and corrected only the invalid client-side legacy address literal. No secret material or RPC credential was printed or added to Git.
+- Tests/simulations:
+  - JavaScript: 26 passed, 0 failed after the correction. Live inspect was read-only and reported zero blockchain writes.
+- Current blocker:
+  - None. Fixture identities are not funded and no experiment account exists yet.
+- Exact next step:
+  - Run the bounded funding command; simulate before each submission, reconcile its saved signature, and stop on any ambiguous outcome before vault initialization.
+
+### 2026-09-27 — Minimal SOL funding finalized; Circle USDC faucet required
+
+- Files inspected:
+  - Fresh fixture's public transaction record, finalized base balances, deployer SPL-token account inventory, Circle's official faucet documentation, and the live evidence file.
+- Evidence:
+  - Minimal SOL funding signature `T5DsyRsMDrnpyaEG1CfJV9qZttdZhViaB1W7k55zYQ11GuemDVuw26u8KH4WQs53XGZSfH2VTvkyi2zRMoJpMh2` is finalized success.
+  - Finalized balances: company 250,000,000 lamports; each approver 5,000,000; recipient A 35,000,000; deployer 2,520,882,537.
+  - The deployer has no token account for Circle devnet USDC; its two token accounts hold unrelated mints. The runner failed before constructing/submitting the USDC funding transaction.
+  - Circle's official faucet supports Solana devnet and dispenses test USDC, but the request is protected by reCAPTCHA.
+- Commands run:
+  - Live `fund`; live `reconcile`; finalized balance queries; read-only `spl-token accounts`; official Circle documentation lookup.
+- Changes made:
+  - Rewrote `pda-custody/LIVE_PER_EVIDENCE.md` with deployment reconciliation, fresh public fixture addresses, finalized SOL funding, current balances, and the precise funding blocker. The RPC endpoint/key and all fixture secrets remain absent.
+- Tests/simulations:
+  - The SOL transaction was saved before submission, simulated successfully, sent once, and reconciled finalized. No USDC transaction, vault initialization, delegation, approval, or payment was submitted.
+- Current blocker:
+  - A human must complete Circle's reCAPTCHA-protected Solana-devnet faucet request to deployer `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`. CAPTCHA bypass/automation is not allowed.
+- Exact next step:
+  - After faucet funding arrives, verify the exact Circle mint/ATA and balance, rerun `fund` to transfer only 20,000 base units to the isolated company, reconcile that signature, then continue simulation-first vault setup/delegation/PER execution.

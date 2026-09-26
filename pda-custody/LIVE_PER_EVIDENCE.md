@@ -1,85 +1,86 @@
 # Live MagicBlock PER evidence
 
-Last updated: 2026-09-26T17:43:26Z
+Last updated: 2026-09-27
 
-Status: **PRE-DEPLOYMENT GATE PASSED — no experiment transaction submitted yet**
+Status: **DEPLOYED; LIVE SETUP BLOCKED BEFORE USDC FUNDING**
 
 ## Fixed scope
 
 - Network: Solana/MagicBlock devnet only
-- Expected genesis: `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`
-- Base RPC: `https://api.devnet.solana.com`
+- Expected and observed genesis: `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`
+- Base reads/writes: trusted environment-provided Solana devnet RPC; its URL and credential are intentionally not recorded
 - PER: `https://devnet-tee.magicblock.app`
 - TEE identity: `MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo`
 - Program: `AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo`
-- Circle devnet USDC: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
+- Circle devnet USDC: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` (6 decimals)
 - Artifact SHA-256: `86ec1ac50ce2601eb4c265b0b3f19c9f6b5da1298adc2564f56082cd2454d37e`
 - Artifact size: 460,760 bytes
-- Expected upgrade authority: `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`
 
-## Successful read-only gate
+## Deployment reconciliation
 
-Before the loader was invoked, read-only checks returned the exact expected
-genesis, TEE validator, mint, six decimals, program ID, and program absence.
-The deployer held 5,160,560,297 devnet lamports. The RPC returned these rent
-values:
+- Deployment signature: `5TdXaPeBaHKCVMHY471Ykw88Jy3A38cU3T2q88Qy8AJqWE1UHXjdNMB3ahCemRAKhCkrVQRKxVXcaBJz9yeGCbR5`
+- Outcome/finality: finalized success (`err: null`)
+- Deployment slot: 504520046
+- ProgramData: `8L3bqttWFggYQLT2vEh242BaGJE2PXhiTmtBJBywYqbF`
+- Upgrade authority: `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`
+- Program owner: `BPFLoaderUpgradeab1e11111111111111111111111`
+- Executable: yes
+- Deployed data length: 460,760 bytes
+- Deployed-byte verification: `solana program dump` produced an exact byte-for-byte match with the approved local artifact and the same SHA-256.
+- Known buffer `HMUJssvAgtjonKX1oHe7gXDuV88ftUDWLaurogZkfa1F` was consumed to zero by the finalized deployment.
 
-- ProgramData (460,805 bytes): 2,341,539,640 lamports
-- Program account: 833,120 lamports
-- Temporary buffer: 2,341,499,000 lamports
+No redeployment, upgrade, close, or modification was performed after this reconciliation.
 
-The net deployment plus bounded setup fits the 3.5 SOL spend limit, and the
-temporary peak allocation fits the deployer balance.
+## Fresh isolated fixture
 
-## Deployment delivery and reconciliation
+The secret-bearing fixture is ignored at `.lab/pda-custody-live-20260927.json`, mode 0600. Secret arrays are not recorded here.
 
-1. A guarded command timed out during a read-only account check before the
-   loader command was reached. Shell short-circuiting prevented any write.
-2. After reconciling zero program/buffer balances, one loader invocation was
-   made through the fixed RPC with `--use-rpc`, a dedicated known buffer,
-   `--max-sign-attempts 1`, and the exact artifact/program keypair.
-3. The CLI returned `AccountNotFound ... error sending request` before
-   producing any transaction signature.
-4. Immediate reconciliation at the same current devnet slot showed:
-   - program balance: 0 lamports;
-   - dedicated buffer balance: 0 lamports;
-   - deployer balance: unchanged at 5,160,560,297 lamports.
+| Role/resource | Public address |
+|---|---|
+| Company | `7nq2ZK6CwL5NrzbgfeZMuYmNeCCTE2MDnL5vicT8dXAL` |
+| Independent accountant | `FHxS1saQyLCp9Mg3NKbdkhGpmmbCsnto7zBhnidCh7jd` |
+| Approver one | `EELHqnsZjy7Vy3ErLqnDAsxvZioaK5SNf9W8M1PNN3eN` |
+| Approver two | `5wX1nFHpwYU4tTHJuASGMq5wdcUoZmWTPcW37aKvSc38` |
+| Recipient A | `FeN2zh9NZzLCFPZ8Uo1oPFFiwtTAa3hcPvEX5LCC4pRN` |
+| Unrelated recipient B control | `GKvZaEWyXAXxjz1fYjduhYUVddYqdkrKWqnrAsUvX3ka` |
+| Outsider | `8dLCmnRp3XC8DHSh8q8MBLjq6faH8bzDkvzURrA3Vefr` |
+| CompanyVault PDA | `GhjDy7sMFCfzt4EnrXNHv39y8yDCaeEXo7VfuTd7yE1M` |
+| PaymentIntent A PDA | `3Ks7Jv86EazhKuk8T2h4ZCkuCKmnPtCkUCtj2LcWgmBw` |
+| PaymentReceipt A PDA | `2Ut3YhoBgkNRnWgGynz8NqrzL58t5Up6LbWEJuLbgWqW` |
 
-Those three independent state checks prove no buffer creation/upload, program
-deployment, fee debit, or other blockchain write landed. There is no unknown
-signature and no deployment signature/slot/ProgramData account to report.
+Payment A is fixed at 10,000 USDC base units (0.01 USDC). The runner is capped to one successful execution and recipient B is used only as an authenticated denial control.
 
-## Superseded base-RPC blocker
+## Submitted live transactions
 
-The formerly fixed MagicBlock/Triton base RPC answered genesis and balance requests, but
-`getAccountInfo` and `getMultipleAccounts` repeatedly time out for absent
-accounts, the System Program, and the existing USDC mint across base64,
-jsonParsed, processed, and confirmed variants. The Solana upgradeable-loader
-CLI requires those account reads, so deployment, post-deployment byte
-verification, funding, setup, and PER testing cannot safely proceed.
+| Semantic action | Signature | Outcome | Finality |
+|---|---|---|---|
+| Fund company, two approvers, and recipient A with minimal devnet SOL | `T5DsyRsMDrnpyaEG1CfJV9qZttdZhViaB1W7k55zYQ11GuemDVuw26u8KH4WQs53XGZSfH2VTvkyi2zRMoJpMh2` | success | finalized |
 
-No alternate RPC was used under the authorization that was active at that time. The user has since
-explicitly authorized `https://api.devnet.solana.com` for base-layer activity. No custom loader was attempted
-because it would bypass the required reconciliation safeguards while the same
-account-read outage prevents verification.
+Finalized balances after that transaction:
 
-## Current live results
+- Deployer: 2,520,882,537 lamports
+- Company: 250,000,000 lamports
+- Approver one: 5,000,000 lamports
+- Approver two: 5,000,000 lamports
+- Recipient A: 35,000,000 lamports
 
-- Deployment: not landed; no signature
-- Setup/delegation signatures: none
-- Approval signatures: none
-- Payment execution signatures: none
+The funding transaction was serialized and durably recorded before submission, simulated successfully, sent once, and reconciled by its exact signature.
+
+## Current funding blocker
+
+The deployer owns no token account for Circle devnet USDC. A read-only inventory found only two unrelated mints. The live runner therefore stopped before creating or submitting a USDC funding transaction.
+
+Circle's official public faucet supports Solana devnet and dispenses 20 test USDC, but its request is protected by reCAPTCHA. The safe resumption is to request faucet USDC to the deployer public key `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`; the runner will then transfer only 20,000 base units (0.02 USDC) into the isolated company, within the experiment cap. The faucet credential/UI action cannot be automated or bypassed here.
+
+## Work not yet performed
+
+- CompanyVault/eATA initialization: not submitted
+- Permission creation/delegation: not submitted
+- Approvals: not submitted
+- Payment execution: not submitted
 - Successful private payments: 0
 - Private USDC outflow: 0
-- Access-control matrix: not run on live accounts
-- Live negative simulations: not run
-- Recipient self-onboarding: locally constructed and tested; not yet proven live
-- Mainnet actions: none
+- Live access-control matrix: pending
+- Live negative simulations: pending
 
-## Current safe resumption point
-
-The official Solana devnet gate has reverified the exact genesis, artifact/keypair,
-zero program and known-buffer balances, deployer identity/balance, mint and decimals,
-PER identity, rent, and expected authority. The next authorized action is one loader
-invocation through the official Solana devnet RPC, followed by signature, ProgramData,
-authority, executable-account, and deployed-byte reconciliation before any setup.
+No result is claimed for PER payment atomicity or privacy until authorized positive controls and matched unauthorized controls run successfully. No mainnet action occurred.

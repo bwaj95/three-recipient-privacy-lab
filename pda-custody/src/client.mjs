@@ -35,7 +35,9 @@ import {
 } from "./model.mjs";
 
 export const BASE_RPC =
-  process.env.SOLANA_DEVNET_RPC || "https://api.devnet.solana.com";
+  process.env.SOLANA_DEVNET_RPC_URL ||
+  process.env.SOLANA_DEVNET_RPC ||
+  "https://api.devnet.solana.com";
 export const PER_RPC = "https://devnet-tee.magicblock.app";
 export const DEVNET_GENESIS =
   "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
@@ -51,10 +53,17 @@ export const IDL_PATH = path.join(
   EXPERIMENT_ROOT,
   "target/idl/pda_custody_private_payment.json",
 );
-export const STATE_PATH = path.join(
-  REPOSITORY_ROOT,
-  ".lab/pda-custody-private-payment.json",
-);
+const LAB_ROOT = path.join(REPOSITORY_ROOT, ".lab");
+const requestedStatePath = process.env.PDA_CUSTODY_STATE_PATH;
+export const STATE_PATH = requestedStatePath
+  ? path.resolve(REPOSITORY_ROOT, requestedStatePath)
+  : path.join(LAB_ROOT, "pda-custody-private-payment.json");
+if (
+  STATE_PATH === LAB_ROOT ||
+  !STATE_PATH.startsWith(`${LAB_ROOT}${path.sep}`)
+) {
+  throw new Error("PDA custody state must remain inside the repository .lab directory.");
+}
 
 const IDENTITY_NAMES = [
   "company",

@@ -49,16 +49,14 @@ import {
   derivePermission,
 } from "../src/model.mjs";
 
-const REQUIRED_BASE_RPC = "https://api.devnet.solana.com";
 const EXCLUDED_PROGRAMS = [
   new PublicKey("FnKajG15Hu4tTENtENAHCau4krTWJUyXUGgdVuLpbTzq"),
-  new PublicKey("FnKajG15Hu4tTENtENAHCau42CeVRikC3dPGLvP7HyFWNZ"),
 ];
 const NATIVE_MINT = new PublicKey(
   "So11111111111111111111111111111111111111112",
 );
 const MAX_PAYMENT = 10_000n;
-const MAX_TOTAL_PAYMENT = 20_000n;
+const MAX_TOTAL_PAYMENT = 10_000n;
 const MAX_USDC_FUNDING = 50_000n;
 const MAX_SOL_FUNDING = 500_000_000;
 const TARGET_LAMPORTS = {
@@ -66,12 +64,15 @@ const TARGET_LAMPORTS = {
   approverOne: 5_000_000,
   approverTwo: 5_000_000,
   recipientA: 35_000_000,
-  recipientB: 35_000_000,
 };
 const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-if (BASE_RPC !== REQUIRED_BASE_RPC || PER_RPC !== "https://devnet-tee.magicblock.app") {
+if (
+  !process.env.SOLANA_DEVNET_RPC_URL ||
+  BASE_RPC !== process.env.SOLANA_DEVNET_RPC_URL ||
+  PER_RPC !== "https://devnet-tee.magicblock.app"
+) {
   throw new Error("Refusing endpoints outside the fixed Solana-devnet/PER boundary.");
 }
 
@@ -81,14 +82,12 @@ if (![
   "fund",
   "setup-a",
   "pay-a",
-  "setup-b",
-  "pay-b",
   "audit",
   "reconcile",
   "all",
 ].includes(command)) {
   throw new Error(
-    "Usage: inspect | fund | setup-a | pay-a | setup-b | pay-b | audit | reconcile | all",
+    "Usage: inspect | fund | setup-a | pay-a | audit | reconcile | all",
   );
 }
 
@@ -96,7 +95,7 @@ const state = loadLocalState();
 const identities = keypairsFromState(state);
 const idl = readIdl();
 const coder = new anchor.BorshCoder(idl);
-const base = connection(REQUIRED_BASE_RPC);
+const base = connection(BASE_RPC);
 const perConnections = new Map();
 const authUrls = new Map();
 
@@ -516,7 +515,7 @@ async function fund() {
       base,
       transfers,
       [deployer],
-      `Fund five isolated fee payers with ${fundingLamports} devnet lamports total`,
+      `Fund four isolated fee payers with ${fundingLamports} devnet lamports total`,
     );
   }
 
@@ -580,7 +579,9 @@ async function fund() {
 }
 
 async function setupPayment(label) {
-  if (!['A', 'B'].includes(label)) throw new Error("Unknown payment label.");
+  if (label !== "A") {
+    throw new Error("This live runner is capped to the single authorized payment A.");
+  }
   await verifyNetwork("base");
   const context = deriveContext(state, label);
   if (context.amount !== MAX_PAYMENT) {
@@ -946,6 +947,9 @@ function assertPaidReceipt(receipt, context) {
 }
 
 async function pay(label) {
+  if (label !== "A") {
+    throw new Error("This live runner is capped to the single authorized payment A.");
+  }
   const context = deriveContext(state, label);
   const per = await authenticatedPer("company");
   const plan = await buildInstructionPlan(state, per, label);
@@ -1175,20 +1179,17 @@ async function audit() {
     await authenticatedPer(role);
   }
   const a = deriveContext(state, "A");
-  const b = deriveContext(state, "B");
   const resources = {
     vault: [a.accounts.vault, "CompanyVault"],
     intentA: [a.accounts.intent, "PaymentIntent"],
-    intentB: [b.accounts.intent, "PaymentIntent"],
     receiptA: [a.accounts.receipt, "PaymentReceipt"],
-    receiptB: [b.accounts.receipt, "PaymentReceipt"],
     custody: [a.accounts.sourceTokenAccount, null],
     destinationA: [a.accounts.destinationTokenAccount, null],
-    destinationB: [b.accounts.destinationTokenAccount, null],
   };
   const checks = [
     ["company", "vault"],
     ["accountant", "vault"],
+    ["company", "intentA"],
     ["approverOne", "intentA"],
     ["approverTwo", "intentA"],
     ["approverOne", "vault"],
@@ -1199,18 +1200,11 @@ async function audit() {
     ["recipientA", "vault"],
     ["recipientB", "vault"],
     ["recipientA", "receiptA"],
-    ["recipientA", "receiptB"],
-    ["recipientB", "receiptB"],
     ["recipientB", "receiptA"],
     ["accountant", "receiptA"],
-    ["accountant", "receiptB"],
     ["company", "receiptA"],
-    ["company", "receiptB"],
     ["outsider", "receiptA"],
-    ["outsider", "receiptB"],
     ["recipientA", "destinationA"],
-    ["recipientA", "destinationB"],
-    ["recipientB", "destinationB"],
     ["recipientB", "destinationA"],
     ["recipientA", "custody"],
     ["recipientB", "custody"],
@@ -1238,11 +1232,11 @@ async function audit() {
       attempts: result.attempts,
     });
   }
-  for (const resourceName of ["receiptA", "receiptB"]) {
+  for (const resourceName of ["receiptA"]) {
     const [address, decoderName] = resources[resourceName];
     for (const [identity, endpoint] of [
       ["unauthenticated", PER_RPC],
-      ["public-base-rpc", REQUIRED_BASE_RPC],
+      ["public-base-rpc", BASE_RPC],
     ]) {
       const result = await reliableAccountProbe(endpoint, address, decoderName);
       matrix.push({
@@ -1271,16 +1265,13 @@ async function audit() {
   const expectedAllowed = new Set([
     "company:vault",
     "accountant:vault",
+    "company:intentA",
     "approverOne:intentA",
     "approverTwo:intentA",
     "recipientA:receiptA",
-    "recipientB:receiptB",
     "accountant:receiptA",
-    "accountant:receiptB",
     "company:receiptA",
-    "company:receiptB",
     "recipientA:destinationA",
-    "recipientB:destinationB",
     "company:custody",
   ]);
   for (const row of matrix) {
@@ -1295,6 +1286,14 @@ async function audit() {
     ) {
       throw new Error(`Unauthorized private account was returned for ${key}.`);
     }
+    if (
+      row.authenticatedIdentity === "public-base-rpc" &&
+      row.decodedReceipt &&
+      (row.decodedReceipt.status === RECEIPT_PAID ||
+        row.decodedReceipt.amountBaseUnits !== "0")
+    ) {
+      throw new Error("Base-layer receipt shell exposed private paid accounting data.");
+    }
   }
 
   const companyPer = await authenticatedPer("company");
@@ -1303,10 +1302,7 @@ async function audit() {
     custodyEata: a.accounts.custodyEataPermission,
     intentA: a.accounts.intentPermission,
     receiptA: a.accounts.receiptPermission,
-    intentB: b.accounts.intentPermission,
-    receiptB: b.accounts.receiptPermission,
     recipientEataA: derivePermission(a.accounts.destinationEata),
-    recipientEataB: derivePermission(b.accounts.destinationEata),
   };
   const permissions = {};
   for (const [name, address] of Object.entries(permissionAddresses)) {
@@ -1332,23 +1328,9 @@ async function audit() {
       [identities.accountant.publicKey.toBase58(), 14],
       [identities.recipientA.publicKey.toBase58(), 14],
     ],
-    intentB: [
-      [identities.company.publicKey.toBase58(), 15],
-      [identities.approverOne.publicKey.toBase58(), 15],
-      [identities.approverTwo.publicKey.toBase58(), 15],
-    ],
-    receiptB: [
-      [identities.company.publicKey.toBase58(), 15],
-      [identities.accountant.publicKey.toBase58(), 14],
-      [identities.recipientB.publicKey.toBase58(), 14],
-    ],
     recipientEataA: [
       [identities.company.publicKey.toBase58(), 15],
       [identities.recipientA.publicKey.toBase58(), 15],
-    ],
-    recipientEataB: [
-      [identities.company.publicKey.toBase58(), 15],
-      [identities.recipientB.publicKey.toBase58(), 15],
     ],
   };
   const permissionedResources = {
@@ -1356,10 +1338,7 @@ async function audit() {
     custodyEata: a.accounts.sourceEata,
     intentA: a.accounts.intent,
     receiptA: a.accounts.receipt,
-    intentB: b.accounts.intent,
-    receiptB: b.accounts.receipt,
     recipientEataA: a.accounts.destinationEata,
-    recipientEataB: b.accounts.destinationEata,
   };
   for (const [name, expected] of Object.entries(exactMembers)) {
     const observed = permissions[name].members.map((member) => [member.pubkey, member.flags]);
@@ -1437,13 +1416,9 @@ async function all() {
   await fund();
   await setupPayment("A");
   await pay("A");
-  await setupPayment("B");
-  await pay("B");
   await audit();
   await reconcile();
-  const paidTotal = ["A", "B"].reduce((total, label) => {
-    return state.observations[`payment.${label}.result`] ? total + MAX_PAYMENT : total;
-  }, 0n);
+  const paidTotal = state.observations["payment.A.result"] ? MAX_PAYMENT : 0n;
   if (paidTotal > MAX_TOTAL_PAYMENT) {
     throw new Error("Total payment outflow exceeded the authorized cap.");
   }
@@ -1454,8 +1429,6 @@ try {
   if (command === "fund") await fund();
   if (command === "setup-a") await setupPayment("A");
   if (command === "pay-a") await pay("A");
-  if (command === "setup-b") await setupPayment("B");
-  if (command === "pay-b") await pay("B");
   if (command === "audit") await audit();
   if (command === "reconcile") await reconcile();
   if (command === "all") await all();

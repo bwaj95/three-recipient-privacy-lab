@@ -29,6 +29,8 @@ Status: **DEPLOYED; LIVE SETUP BLOCKED BEFORE USDC FUNDING**
 - Deployed-byte verification: `solana program dump` produced an exact byte-for-byte match with the approved local artifact and the same SHA-256.
 - Known buffer `HMUJssvAgtjonKX1oHe7gXDuV88ftUDWLaurogZkfa1F` was consumed to zero by the finalized deployment.
 
+Security note: a verbose CLI confirmation echoed the environment-provided RPC URL into transient tool output. The URL/key is absent from repository files and commits, but the credential should be rotated before live work resumes.
+
 No redeployment, upgrade, close, or modification was performed after this reconciliation.
 
 ## Fresh isolated fixture
@@ -70,7 +72,7 @@ The funding transaction was serialized and durably recorded before submission, s
 
 The deployer owns no token account for Circle devnet USDC. A read-only inventory found only two unrelated mints. The live runner therefore stopped before creating or submitting a USDC funding transaction.
 
-Circle's official public faucet supports Solana devnet and dispenses 20 test USDC, but its request is protected by reCAPTCHA. The safe resumption is to request faucet USDC to the deployer public key `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`; the runner will then transfer only 20,000 base units (0.02 USDC) into the isolated company, within the experiment cap. The faucet credential/UI action cannot be automated or bypassed here.
+Circle's official public faucet supports Solana devnet and dispenses 20 test USDC, but its request is protected by reCAPTCHA. After rotating the RPC credential, the safe resumption is to request faucet USDC to the deployer public key `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`; the runner will then transfer only 20,000 base units (0.02 USDC) into the isolated company, within the experiment cap. The faucet credential/UI action cannot be automated or bypassed here.
 
 ## Work not yet performed
 

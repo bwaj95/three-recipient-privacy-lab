@@ -479,6 +479,7 @@
   - A finalized program dump is exactly 460,760 bytes and byte-for-byte identical to the approved artifact; both SHA-256 values are `86ec1ac50ce2601eb4c265b0b3f19c9f6b5da1298adc2564f56082cd2454d37e`.
 - Commands run:
   - Devnet genesis verification through the trusted environment-provided RPC; finalized signature confirmation; `solana program show`; `solana program dump`; SHA-256, size, and `cmp` verification. The RPC URL/API key was not written to any repository file.
+  - Security note: `solana confirm --verbose` echoed the configured RPC URL into transient tool output. It was not persisted or committed, but the embedded Alchemy credential should be rotated before resumption.
 - Changes made:
   - Added only this public-safe reconciliation record. No program deployment, upgrade, close, or other blockchain write was performed by this reconciliation step.
 - Tests/simulations:
@@ -539,7 +540,7 @@
 - Commands run:
   - Fresh-state initialization; mode/ignore checks; `npm run check`; `npm test`; live `inspect` through the trusted devnet RPC plus fixed PER.
 - Changes made:
-  - Created the ignored secret fixture and corrected only the invalid client-side legacy address literal. No secret material or RPC credential was printed or added to Git.
+  - Created the ignored secret fixture and corrected only the invalid client-side legacy address literal. No fixture secret or RPC credential was added to Git; the separate transient verbose-output exposure is recorded above.
 - Tests/simulations:
   - JavaScript: 26 passed, 0 failed after the correction. Live inspect was read-only and reported zero blockchain writes.
 - Current blocker:
@@ -563,6 +564,6 @@
 - Tests/simulations:
   - The SOL transaction was saved before submission, simulated successfully, sent once, and reconciled finalized. No USDC transaction, vault initialization, delegation, approval, or payment was submitted.
 - Current blocker:
-  - A human must complete Circle's reCAPTCHA-protected Solana-devnet faucet request to deployer `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`. CAPTCHA bypass/automation is not allowed.
+  - A human must rotate the transiently exposed Alchemy credential and complete Circle's reCAPTCHA-protected Solana-devnet faucet request to deployer `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`. CAPTCHA bypass/automation is not allowed.
 - Exact next step:
-  - After faucet funding arrives, verify the exact Circle mint/ATA and balance, rerun `fund` to transfer only 20,000 base units to the isolated company, reconcile that signature, then continue simulation-first vault setup/delegation/PER execution.
+  - After the rotated RPC environment is installed and faucet funding arrives, reverify devnet genesis plus the exact Circle mint/ATA and balance, rerun `fund` to transfer only 20,000 base units to the isolated company, reconcile that signature, then continue simulation-first vault setup/delegation/PER execution.

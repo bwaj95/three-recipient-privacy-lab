@@ -49,10 +49,11 @@ import {
   derivePermission,
 } from "../src/model.mjs";
 
-const REQUIRED_BASE_RPC = "https://rpc.magicblock.app/devnet";
-const EXCLUDED_PROGRAM = new PublicKey(
-  "FnKajG15Hu4tTENtENAHCau4krTWJUyXUGgdVuLpbTzq",
-);
+const REQUIRED_BASE_RPC = "https://api.devnet.solana.com";
+const EXCLUDED_PROGRAMS = [
+  new PublicKey("FnKajG15Hu4tTENtENAHCau4krTWJUyXUGgdVuLpbTzq"),
+  new PublicKey("FnKajG15Hu4tTENtENAHCau42CeVRikC3dPGLvP7HyFWNZ"),
+];
 const NATIVE_MINT = new PublicKey(
   "So11111111111111111111111111111111111111112",
 );
@@ -71,7 +72,7 @@ const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 if (BASE_RPC !== REQUIRED_BASE_RPC || PER_RPC !== "https://devnet-tee.magicblock.app") {
-  throw new Error("Refusing endpoints outside the fixed MagicBlock devnet boundary.");
+  throw new Error("Refusing endpoints outside the fixed Solana-devnet/PER boundary.");
 }
 
 const command = process.argv[2] || "inspect";
@@ -199,10 +200,14 @@ function loadDeployer() {
 function validateInstructions(instructions) {
   if (!instructions.length) throw new Error("Refusing an empty transaction.");
   for (const instruction of instructions) {
-    if (instruction.programId.equals(EXCLUDED_PROGRAM)) {
+    if (EXCLUDED_PROGRAMS.some((program) => instruction.programId.equals(program))) {
       throw new Error("Refusing any instruction to the excluded program.");
     }
-    if (instruction.keys.some((meta) => meta.pubkey.equals(EXCLUDED_PROGRAM))) {
+    if (
+      instruction.keys.some((meta) =>
+        EXCLUDED_PROGRAMS.some((program) => meta.pubkey.equals(program)),
+      )
+    ) {
       throw new Error("Refusing any account reference to the excluded program.");
     }
   }

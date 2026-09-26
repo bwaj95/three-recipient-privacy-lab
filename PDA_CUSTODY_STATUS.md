@@ -426,3 +426,44 @@
   - The fixed base RPC's `getAccountInfo` and `getMultipleAccounts` methods currently time out even for the USDC mint, while genesis and balance methods respond. The Solana loader requires those account reads and cannot safely start until they recover.
 - Exact next step:
   - Continue read-only monitoring. Once `getAccountInfo` succeeds, reverify genesis plus zero program/buffer balances, then make one reconciled loader invocation using the same exact artifact and known buffer; do not use another RPC endpoint.
+
+### 2026-09-26 — Official Solana devnet endpoint override applied
+
+- Files inspected:
+  - Branch/HEAD and tracked diff, preserved backup files, MagicBlock delegation/eSPL skill references, live runner endpoint guards, production IDL, program source/configuration, artifact/keypair, and ignore rules.
+- Evidence:
+  - HEAD is the requested `78d70134a963777cc51e4aed5c9260f10dd60be3`; the tracked tree was clean before this milestone.
+  - Artifact SHA-256 is `86ec1ac50ce2601eb4c265b0b3f19c9f6b5da1298adc2564f56082cd2454d37e`, size is 460,760 bytes, and the keypair public key is `AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo`.
+  - The production IDL lists 15 instructions and no failure-injection instruction. `.lab`, `target`, keypairs, `.so`, and node modules remain ignored.
+  - Current MagicBlock guidance preserves the base/PER endpoint split and permits Solana devnet as the base endpoint; the PER remains `https://devnet-tee.magicblock.app`.
+- Commands run:
+  - Git status/HEAD/diff checks; artifact hash/size; program-keypair public-key derivation; IDL/source/config/ELF hygiene searches; skill reference inspection; `node --check`; `npm test`.
+- Changes made:
+  - Changed only the live runner's required base endpoint to `https://api.devnet.solana.com` and expanded its transaction guard to reject references to either excluded legacy program ID. Commit `78d7013` is the exact tracked pre-edit backup.
+- Tests/simulations:
+  - JavaScript tests: 26 passed, 0 failed. Syntax check produced no JavaScript error. No RPC transaction or blockchain write was attempted.
+- Current blocker:
+  - None locally. The fresh official-devnet read-only deployment gate has not yet been run.
+- Exact next step:
+  - Run the complete read-only official-devnet gate (genesis, program/buffer absence, deployer identity/balance, mint/decimals, rent/cost, TEE identity, artifact/IDL/source consistency); deploy once only if every result matches.
+
+### 2026-09-26 — Official-devnet deployment gate passes
+
+- Files inspected:
+  - Live runner/client endpoint constants, artifact/keypair, source/IDL/Anchor IDs, normal IDL instruction inventory, normal ELF strings, public evidence, and ignored known deployment buffer.
+- Evidence:
+  - Official Solana devnet genesis is exactly `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`; PER identity is exactly `MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo`.
+  - Circle devnet mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` exists with 6 decimals.
+  - Isolated target program and known buffer each have zero lamports; `program show` resolved the target as not found. No uploaded program or buffer landed in the earlier attempt.
+  - Deployer is exactly `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b` with 5,160,560,297 lamports. ProgramData rent is 2,341,539,640 lamports; deployment plus bounded minimal setup remains below the 3.5 SOL spend cap.
+  - Artifact remains SHA-256 `86ec1ac50ce2601eb4c265b0b3f19c9f6b5da1298adc2564f56082cd2454d37e`, 460,760 bytes. Program IDs match; the 15-instruction production IDL and normal ELF contain no failure-injection entry/symbol.
+- Commands run:
+  - Official-devnet `genesis-hash`, deployer/program/buffer balance checks, `program show`, rent query, mint `getTokenSupply`; PER `getIdentity`; local keypair/address, hash/size, IDL inventory, ELF, Git-diff and ignore scans.
+- Changes made:
+  - Set the shared client and live runner base default/guard to the newly authorized official Solana devnet endpoint. Updated the public live-evidence resumption boundary. Both excluded legacy program IDs remain transaction-blocked.
+- Tests/simulations:
+  - No blockchain transaction was built or submitted during this gate. The first batched official-RPC read received HTTP 429; paced individual reads then returned all required facts and were not treated as writes.
+- Current blocker:
+  - None. Deployment has not yet been invoked.
+- Exact next step:
+  - Run syntax/unit/hygiene checks, commit and push only the endpoint transition on the experiment branch, recheck genesis/hash/key/balance immediately before the loader, then deploy exactly once with the known buffer and reconcile before setup.

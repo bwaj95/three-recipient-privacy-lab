@@ -2,13 +2,13 @@
 
 Last updated: 2026-09-26T17:43:26Z
 
-Status: **BLOCKED BEFORE DEPLOYMENT — no on-chain experiment transaction has been submitted**
+Status: **PRE-DEPLOYMENT GATE PASSED — no experiment transaction submitted yet**
 
 ## Fixed scope
 
 - Network: Solana/MagicBlock devnet only
 - Expected genesis: `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`
-- Base RPC: `https://rpc.magicblock.app/devnet`
+- Base RPC: `https://api.devnet.solana.com`
 - PER: `https://devnet-tee.magicblock.app`
 - TEE identity: `MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo`
 - Program: `AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo`
@@ -49,17 +49,17 @@ Those three independent state checks prove no buffer creation/upload, program
 deployment, fee debit, or other blockchain write landed. There is no unknown
 signature and no deployment signature/slot/ProgramData account to report.
 
-## External blocker
+## Superseded base-RPC blocker
 
-The fixed base RPC currently answers genesis and balance requests, but
+The formerly fixed MagicBlock/Triton base RPC answered genesis and balance requests, but
 `getAccountInfo` and `getMultipleAccounts` repeatedly time out for absent
 accounts, the System Program, and the existing USDC mint across base64,
 jsonParsed, processed, and confirmed variants. The Solana upgradeable-loader
 CLI requires those account reads, so deployment, post-deployment byte
 verification, funding, setup, and PER testing cannot safely proceed.
 
-No alternate RPC was used because the authorization pins all blockchain
-activity to `https://rpc.magicblock.app/devnet`. No custom loader was attempted
+No alternate RPC was used under the authorization that was active at that time. The user has since
+explicitly authorized `https://api.devnet.solana.com` for base-layer activity. No custom loader was attempted
 because it would bypass the required reconciliation safeguards while the same
 account-read outage prevents verification.
 
@@ -76,10 +76,10 @@ account-read outage prevents verification.
 - Recipient self-onboarding: locally constructed and tested; not yet proven live
 - Mainnet actions: none
 
-## Exact safe resumption point
+## Current safe resumption point
 
-Wait until `getAccountInfo` succeeds on the fixed base RPC. Then reverify the
-exact genesis, artifact/keypair, zero program balance, zero known-buffer
-balance, deployer balance, and expected authority. Only after those checks may
-the same loader command be invoked again. After deployment, reconcile its
-signature and deployed bytes before any funding or setup transaction.
+The official Solana devnet gate has reverified the exact genesis, artifact/keypair,
+zero program and known-buffer balances, deployer identity/balance, mint and decimals,
+PER identity, rent, and expected authority. The next authorized action is one loader
+invocation through the official Solana devnet RPC, followed by signature, ProgramData,
+authority, executable-account, and deployed-byte reconciliation before any setup.

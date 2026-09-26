@@ -35,7 +35,7 @@ import {
 } from "./model.mjs";
 
 export const BASE_RPC =
-  process.env.SOLANA_DEVNET_RPC || "https://rpc.magicblock.app/devnet";
+  process.env.SOLANA_DEVNET_RPC || "https://api.devnet.solana.com";
 export const PER_RPC = "https://devnet-tee.magicblock.app";
 export const DEVNET_GENESIS =
   "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";

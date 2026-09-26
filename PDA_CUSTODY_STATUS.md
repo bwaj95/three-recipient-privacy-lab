@@ -264,3 +264,23 @@
   - The user's deployment approval was conditional on every check passing and bound to the existing artifact hash. Checks 1, 2, 3, and the literal form of 5 fail, so that authorization is not operative and deployment is prohibited.
 - Exact next step:
   - Commit and push the audited source/documentation branch as requested, without merging or deploying. Then obtain authorization to implement a separate accountant and per-receipt recipient visibility; rebuild/retest and request new deployment approval for the resulting new artifact hash.
+
+### 2026-09-26 — Audited branch committed and pushed; no deployment
+
+- Files inspected:
+  - Staged path list, staged diff whitespace, binary-file inventory, secret-pattern scan, branch name, origin repository, and remote branch heads.
+- Evidence:
+  - Only the 22 intended experiment source, test, manifest, and documentation files were committed. `.lab`, `target`, keypairs, build artifacts, node modules, local backup files, `.agents`, and `skills-lock.json` were excluded.
+  - Source/documentation commit: `67450a9` (`feat: add PDA custody private payment experiment`).
+  - HTTPS push lacked an interactive GitHub username and made no remote change. Read-only SSH access to the same repository succeeded, and the branch was then pushed through SSH.
+  - Remote `main` remained at the pre-experiment commit; no merge or pull request was performed.
+- Commands run:
+  - Explicit `git add` path list; `git diff --cached --check`; staged path/binary/secret scans; `git commit`; HTTPS `git push` attempt; read-only SSH `git ls-remote`; SSH `git push` of only `experiment/pda-custody-private-payment`.
+- Changes made:
+  - Added this documentation-only handoff entry after the initial source commit/push.
+- Tests/simulations:
+  - No additional runtime test was necessary because the post-test changes were documentation only. No blockchain query beyond prior read-only checks and no blockchain write occurred.
+- Current blocker:
+  - Deployment remains prohibited because the conditional security checks did not all pass. No deployment signature or slot exists.
+- Exact next step:
+  - Commit and push this final documentation-only entry, then stop and request explicit authorization to remediate the accountant/visibility design. Any rebuilt artifact will require a new hash-bound deployment approval.

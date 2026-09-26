@@ -25,6 +25,7 @@ const key = () => Keypair.generate().publicKey;
 
 function fixture() {
   const company = key();
+  const accountant = key();
   const approverOne = key();
   const approverTwo = key();
   const recipient = key();
@@ -49,6 +50,7 @@ function fixture() {
     vault: {
       address: accounts.vault.toBase58(),
       company: company.toBase58(),
+      accountant: accountant.toBase58(),
       approverOne: approverOne.toBase58(),
       approverTwo: approverTwo.toBase58(),
       recipient: recipient.toBase58(),
@@ -62,6 +64,8 @@ function fixture() {
     intent: {
       address: accounts.intent.toBase58(),
       paymentId: paymentIdHex,
+      approverOne: approverOne.toBase58(),
+      approverTwo: approverTwo.toBase58(),
       recipient: recipient.toBase58(),
       sourceEata: accounts.sourceEata.toBase58(),
       destinationEata: accounts.destinationEata.toBase58(),
@@ -117,6 +121,7 @@ function fixture() {
     args,
     accounts,
     company,
+    accountant,
     approverOne,
     approverTwo,
     recipient,
@@ -167,6 +172,7 @@ test("a valid payment atomically transfers and writes EXECUTED/PAID", () => {
   assert.equal(result.intent.executed, true);
   assert.equal(result.receipt.status, RECEIPT_PAID);
   assert.equal(result.receipt.amount, 10_000n);
+  assert.equal(result.receipt.accountant, state.vault.accountant);
   assert.equal(result.receipt.intentHash, args.intentHash);
   assert.equal(state.tokens.source.balance, 1_000_000n);
   assert.equal(state.intent.status, INTENT_APPROVED);
@@ -187,7 +193,7 @@ test("duplicate approver fails", () => {
   state.intent.approvalCount = 1;
   state.intent.status = INTENT_PENDING;
   rejects("DuplicateApprover", () =>
-    recordApproval(state.intent, approverOne.toBase58(), state.vault),
+    recordApproval(state.intent, approverOne.toBase58()),
   );
 });
 
@@ -197,7 +203,22 @@ test("unknown approver fails", () => {
   state.intent.approvalCount = 0;
   state.intent.status = INTENT_PENDING;
   rejects("UnknownApprover", () =>
-    recordApproval(state.intent, key().toBase58(), state.vault),
+    recordApproval(state.intent, key().toBase58()),
+  );
+});
+
+test("independent accountant and recipient cannot approve", () => {
+  const { state, accountant, recipient } = fixture();
+  state.intent.approvalMask = 0;
+  state.intent.approvalCount = 0;
+  state.intent.status = INTENT_PENDING;
+  assert.notEqual(state.vault.accountant, state.intent.approverOne);
+  assert.notEqual(state.vault.accountant, state.intent.approverTwo);
+  rejects("UnknownApprover", () =>
+    recordApproval(state.intent, accountant.toBase58()),
+  );
+  rejects("UnknownApprover", () =>
+    recordApproval(state.intent, recipient.toBase58()),
   );
 });
 
@@ -206,9 +227,9 @@ test("two independent approvers are required", () => {
   state.intent.approvalMask = 0;
   state.intent.approvalCount = 0;
   state.intent.status = INTENT_PENDING;
-  recordApproval(state.intent, approverOne.toBase58(), state.vault);
+  recordApproval(state.intent, approverOne.toBase58());
   assert.equal(state.intent.status, INTENT_PENDING);
-  recordApproval(state.intent, approverTwo.toBase58(), state.vault);
+  recordApproval(state.intent, approverTwo.toBase58());
   assert.equal(state.intent.status, INTENT_APPROVED);
   assert.equal(state.intent.approvalMask, 3);
 });

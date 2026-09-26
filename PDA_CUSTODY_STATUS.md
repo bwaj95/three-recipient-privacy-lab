@@ -284,3 +284,123 @@
   - Deployment remains prohibited because the conditional security checks did not all pass. No deployment signature or slot exists.
 - Exact next step:
   - Commit and push this final documentation-only entry, then stop and request explicit authorization to remediate the accountant/visibility design. Any rebuilt artifact will require a new hash-bound deployment approval.
+
+### 2026-09-26 — Autonomous remediation authorization and baseline
+
+- Files inspected:
+  - MagicBlock skill plus current security, Ephemeral SPL Token, delegation, and debugging references.
+  - Local branch/HEAD, remote experiment/main refs, worktree status, current program keypair public key, and prior artifact hash.
+- Evidence:
+  - Local and remote experiment branch both start at the required `b9ed75cba3d185f9b21465c19749567ba453f887`; remote `main` remains `6aea403fe7126ede6d6ab4a2661ef9b123f80b18`.
+  - Only the previously documented skill-installation files and local backup files are untracked; no tracked change predated this remediation.
+  - Isolated keypair still resolves to `AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo`; prior artifact hash remains `62625984161b1ee7017941387574d52a410d20953e46027ac95e3a63509b2f10` before remediation.
+  - The first combined read-only devnet client check returned a transient `fetch failed`; no chain write was attempted and this is not being treated as a network or identity result.
+- Commands run:
+  - Local Git status/log/ref checks; read-only SSH `git ls-remote`; `sha256sum`; `solana address`; simulation-client `check` attempt.
+- Changes made:
+  - Updated this status log only.
+- Tests/simulations:
+  - No program test or blockchain simulation yet in this remediation phase.
+- Current blocker:
+  - The independent-accountant, recipient-specific receipt access, and repeated-payment model still require source/client/test changes before any deployment can be considered.
+- Exact next step:
+  - Back up current experiment source, redesign the vault and permission member builders for one independent accountant plus per-payment recipient isolation, extend the client/state to two recipients/payments, and update deterministic tests.
+
+### 2026-09-26 — Core accountant and least-privilege redesign compiles
+
+- Files inspected:
+  - Existing Rust state layouts, permission member builders, approval context, receipt write path, eSPL permission/update source, JavaScript state schema, plan builder, and model/client tests.
+- Evidence:
+  - `CompanyVault` now stores an independent accountant.
+  - Permission sets are split: vault = company authority + accountant view; custody eATA = company authority only; intent = company plus both approvers with authority; receipt = company authority + accountant view + only the selected recipient view.
+  - `approve_payment` no longer receives or exposes `CompanyVault`; immutable approver keys are copied into each intent during configuration and approval operates only on that private intent.
+  - Vault permission creation is a one-time idempotent instruction; each intent/receipt pair has its own idempotent permission-creation instruction.
+  - Receipt accounting now copies `vault.accountant`, and recipient rotation rejects company/accountant/approver identities.
+- Commands run:
+  - Backed up current Rust/JS source and tests as `*.before-accountant-remediation`.
+  - `cargo fmt --all`; `cargo check -p pda-custody-private-payment`; `cargo test -p pda-custody-private-payment`.
+- Changes made:
+  - Updated `state.rs`, `lib.rs`, `model.mjs`, and the first model assertions.
+  - Began version-2 isolated client state with accountant, recipient A, recipient B, two random payment IDs, revisions 1/2, and recipient self-funded eATA onboarding.
+- Tests/simulations:
+  - Rust: 18 passed, 0 failed; only the known Anchor macro `unexpected cfg solana` warnings remain.
+- Current blocker:
+  - The generated IDL and local-SVM fixtures still describe the previous state schema; two-payment JS/client tests and live transaction orchestration are not yet complete.
+- Exact next step:
+  - Finish client/test migration, rebuild the IDL, update local-SVM account fixtures for the new layouts, then exercise both recipient permission plans and repeated-payment behavior locally.
+
+### 2026-09-26 — Corrected local validation passes; deployment-cost gate under review
+
+- Files inspected:
+  - Corrected Rust program/state, JavaScript model/client, two-payment plans, compiled local-SVM fixture, production IDL, normal production ELF, program keypair, and repository tracking/ignore state.
+- Evidence:
+  - Independent accountant and per-receipt isolation are implemented. Receipt A and receipt B have distinct PDAs and distinct recipient members while sharing the same custody vault/eATA.
+  - Rust permission tests prove: vault = company authority + accountant view-only; custody = company authority only; intent = company plus exactly two approvers; each receipt = company authority + accountant view-only + its selected recipient view-only.
+  - Recipient self-onboarding uses the selected recipient as payer/signer for its eATA permission/delegation path and does not grant that recipient access to the company vault or custody eATA.
+  - Compiled local-SVM execution proves a single `execute_private_payment` instruction performs a depth-2 PDA-signed token CPI and atomically moves 10,000 base units while transitioning intent to EXECUTED and receipt to PAID.
+  - Insufficient-funds token CPI and a feature-only forced post-CPI failure both leave token balances, intent, and receipt unchanged.
+  - Normal production IDL contains 15 instructions and no failure-injection instruction. The normal ELF contains no failure-injection symbol. Program ID is consistent across keypair/source/IDL/Anchor configuration.
+  - Current normal artifact SHA-256 is `875af74661009e792c872398ffee91aa1a7d78b226424e691b450e24f778f151`; size is 532,880 bytes.
+- Commands run:
+  - `cargo fmt --all`; Rust check/tests; JavaScript tests; feature-gated Anchor build; local-SVM integration tests; normal Anchor rebuild; IDL/ELF/program-ID/hygiene inspections; two-recipient plan generation; artifact hash/size inspection; `solana program deploy --help`; deployment rent query.
+- Changes made:
+  - Updated isolated Rust program/state, client/model, and all three local test suites. Migrated only the isolated ignored `.lab` state to schema version 2 without printing secret material.
+- Tests/simulations:
+  - Rust: 18 passed, 0 failed.
+  - JavaScript: 26 passed, 0 failed.
+  - Compiled local-SVM: success, failed-token-CPI rollback, and forced post-CPI rollback all passed.
+  - Normal Anchor production build passed without an SBF stack-frame diagnostic.
+- Current blocker:
+  - The fixed MagicBlock devnet endpoint did not return the rent sysvar to `solana rent`. At 532,880 bytes the standard rent estimate may exceed the authorized 3.5 devnet-SOL total-spend ceiling, so deployment is not yet safe.
+- Exact next step:
+  - Produce a normal size-optimized SBF artifact, rerun production provenance checks, and obtain an exact read-only rent estimate from the required MagicBlock devnet endpoint before any blockchain write.
+
+### 2026-09-26 — Size gate cleared and durable live workflow implemented
+
+- Files inspected:
+  - Current official MagicBlock Smart Contract Integration guide; pinned SDK delegation/auth/permission source; Solana deploy CLI; corrected normal IDL/ELF; public deployer address/balance; isolated state headers and public keys only.
+- Evidence:
+  - The official guide still documents an eATA derived under the Ephemeral SPL Token program for a program-owned PDA, eATA delegation, and an in-rollup `CpiContext::new_with_signer` SPL Token transfer.
+  - Size optimization reduced the normal artifact from 532,880 to 460,760 bytes. Corrected SHA-256 is `86ec1ac50ce2601eb4c265b0b3f19c9f6b5da1298adc2564f56082cd2454d37e`.
+  - The required MagicBlock devnet RPC returned the exact expected genesis and 2,341,539,640 lamports of rent for the 460,805-byte ProgramData allocation, leaving room under the 3.5 SOL authorization for minimal setup.
+  - Program keypair/source/IDL/Anchor IDs all remain `AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo`; the normal IDL has 15 instructions and the normal ELF has no failure-injection symbol.
+  - The pre-deployment audit now passes the independent-accountant, approval isolation, recipient isolation, repeated-payment, instruction inventory, custody outflow, artifact, and Git-hygiene controls.
+- Commands run:
+  - `anchor build -- --optimize-size` (ELF succeeded, combined IDL phase rejected the SBF-only flag); reproducible split build with `anchor build --no-idl -- --optimize-size` and explicit `anchor idl build`; hash/size/IDL/ELF/ID checks; fixed-RPC genesis/rent JSON-RPC; JavaScript syntax and unit tests.
+- Changes made:
+  - Rewrote `pda-custody/SECURITY_AUDIT.md` and `pda-custody/README.md` for the corrected design and artifact.
+  - Exported safe state/connection helpers from `src/client.mjs`.
+  - Added `scripts/live-pda-custody.mjs`, a bounded devnet-only runner with durable signed-transaction records, reconciliation, funding caps, two-payment setup/execution, negative simulations, exact permission decoding, and authenticated/public access-control probes.
+  - Added the live runner to `npm run check`.
+- Tests/simulations:
+  - JavaScript syntax check: passed.
+  - JavaScript/model/client tests: 26 passed, 0 failed.
+  - No transaction was submitted. A read-only token-account query was inconclusive because the fixed RPC temporarily timed out/DNS failed; this was not treated as proof of missing funds or service failure.
+- Current blocker:
+  - None in the implementation. The required endpoint is temporarily intermittent, so all final read-only pre-deployment checks must succeed in one coherent gate before deployment.
+- Exact next step:
+  - Rerun the complete local suite and production scans, commit/push the corrected pre-deployment source, verify the remote branch/main, then perform the final fixed-endpoint deployment gate and deploy exactly once only if every identity/hash/balance/absence/cost check passes.
+
+### 2026-09-26 — Final corrected pre-deployment suite passes
+
+- Files inspected:
+  - Corrected Rust/JavaScript source and tests, regenerated feature-only rollback artifact, regenerated normal size-optimized artifact/IDL, production instruction inventory, ELF strings, program identity declarations, and Git tracking/ignore rules.
+- Evidence:
+  - Rust: 18 passed, 0 failed. JavaScript: 26 passed, 0 failed.
+  - Compiled local-SVM success transferred exactly 10,000 base units with a depth-2 token CPI and wrote EXECUTED/PAID.
+  - Compiled local-SVM insufficient-funds and forced post-CPI failures left persistent balances and state unchanged.
+  - The first local-SVM rerun could not bind its loopback faucet under the filesystem/network sandbox. The exact local-only command was rerun with the approved loopback permission and passed; this was not a blockchain action.
+  - The production rebuild followed the feature build and excludes the test instruction. Final normal artifact remains 460,760 bytes with SHA-256 `86ec1ac50ce2601eb4c265b0b3f19c9f6b5da1298adc2564f56082cd2454d37e`.
+  - The production IDL has exactly 15 expected instructions. Source/IDL/Anchor/keypair program IDs match. No admin/recovery/withdraw/fallback/failure-injection symbol exists in the normal artifact.
+  - `.lab`, `target`, keypairs, `.so`, node modules, and secret environment files remain ignored and untracked. Local backup files remain preserved and untracked.
+- Commands run:
+  - `cargo fmt --all`; `cargo test --workspace`; feature Anchor build and preservation of its ignored test outputs; normal size-optimized Anchor/IDL rebuild; `npm run check`; `npm test`; compiled `node tests/local-svm.integration.mjs`; IDL/ELF/hash/size/program-ID/Git hygiene scans; `git diff --check`.
+- Changes made:
+  - Finalized the live runner's delegation-validator checks, negative-simulation persistence controls, exact recipient-eATA permission verification, receipt field validation, one-top-level-instruction assertion, and repeated authenticated/public account probes.
+- Tests/simulations:
+  - All required local security, rollback, build, syntax, and model tests pass.
+  - No devnet transaction has been submitted in this remediation phase.
+- Current blocker:
+  - None locally. Deployment remains gated on a fresh coherent read-only check of the fixed MagicBlock devnet endpoint and deployer resources.
+- Exact next step:
+  - Stage only the corrected experiment source/tests/public documentation, scan the staged content, commit as `fix: separate accounting and per-receipt access`, push only the experiment branch, and verify remote `main` remains unchanged before the deployment gate.

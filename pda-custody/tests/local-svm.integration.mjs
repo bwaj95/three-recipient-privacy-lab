@@ -44,9 +44,11 @@ const TEST_IDL_PATH = path.resolve(
 );
 const names = [
   "company",
+  "accountant",
   "approverOne",
   "approverTwo",
-  "recipient",
+  "recipientA",
+  "recipientB",
   "outsider",
 ];
 
@@ -55,7 +57,7 @@ function fixture(sourceBalance, fill) {
     names.map((name) => [name, Keypair.generate()]),
   );
   return {
-    version: 1,
+    version: 2,
     cluster: "devnet",
     programId: PROGRAM_ID.toBase58(),
     publicKeys: Object.fromEntries(
@@ -64,10 +66,19 @@ function fixture(sourceBalance, fill) {
     keys: Object.fromEntries(
       names.map((name) => [name, Array.from(identities[name].secretKey)]),
     ),
-    payment: {
-      paymentIdHex: Buffer.alloc(32, fill).toString("hex"),
-      amountBaseUnits: "10000",
-      walletRevision: "1",
+    payments: {
+      A: {
+        recipientRole: "recipientA",
+        paymentIdHex: Buffer.alloc(32, fill).toString("hex"),
+        amountBaseUnits: "10000",
+        walletRevision: "1",
+      },
+      B: {
+        recipientRole: "recipientB",
+        paymentIdHex: Buffer.alloc(32, fill + 20).toString("hex"),
+        amountBaseUnits: "10000",
+        walletRevision: "2",
+      },
     },
     sourceBalance,
   };
@@ -118,13 +129,21 @@ function tokenAccountData(mint, owner, amount) {
 
 async function addFixtureAccounts(directory, coder, state) {
   const context = deriveContext(state);
-  const { identities, accounts, paymentId, intentHash, amount, walletRevision } =
-    context;
+  const {
+    recipient,
+    identities,
+    accounts,
+    paymentId,
+    intentHash,
+    amount,
+    walletRevision,
+  } = context;
   const vaultEncoded = await coder.accounts.encode("CompanyVault", {
     company: identities.company.publicKey,
+    accountant: identities.accountant.publicKey,
     approver_one: identities.approverOne.publicKey,
     approver_two: identities.approverTwo.publicKey,
-    recipient: identities.recipient.publicKey,
+    recipient: recipient.publicKey,
     mint: DEVNET_USDC_MINT,
     custody_eata: accounts.sourceEata,
     custody_token_account: accounts.sourceTokenAccount,
@@ -137,8 +156,10 @@ async function addFixtureAccounts(directory, coder, state) {
   const intentEncoded = await coder.accounts.encode("PaymentIntent", {
     vault: accounts.vault,
     payment_id: [...paymentId],
+    approver_one: identities.approverOne.publicKey,
+    approver_two: identities.approverTwo.publicKey,
     mint: DEVNET_USDC_MINT,
-    recipient: identities.recipient.publicKey,
+    recipient: recipient.publicKey,
     source_eata: accounts.sourceEata,
     destination_eata: accounts.destinationEata,
     source_token_account: accounts.sourceTokenAccount,
@@ -171,7 +192,7 @@ async function addFixtureAccounts(directory, coder, state) {
     access_configured: true,
     bump: accounts.receiptBump,
   });
-  const paddedIntent = Buffer.alloc(327);
+  const paddedIntent = Buffer.alloc(391);
   intentEncoded.copy(paddedIntent);
 
   writeDump(
@@ -201,7 +222,7 @@ async function addFixtureAccounts(directory, coder, state) {
       TOKEN_PROGRAM_ID,
       tokenAccountData(
         DEVNET_USDC_MINT,
-        identities.recipient.publicKey,
+        recipient.publicKey,
         2_000_000n,
       ),
     ),
@@ -452,6 +473,10 @@ try {
   assert.equal(successful.postIntent.executed, true);
   assert.equal(successful.postReceipt.status, RECEIPT_PAID);
   assert.equal(successful.postReceipt.amount.toString(), "10000");
+  assert.equal(
+    successful.postReceipt.accountant.toBase58(),
+    deriveContext(success).identities.accountant.publicKey.toBase58(),
+  );
   assert.ok(
     successful.simulation.value.logs?.some(
       (line) =>

@@ -1,99 +1,139 @@
-# Final pre-deployment security and provenance audit
+# Corrected pre-deployment security and provenance audit
 
 Date: 2026-09-26
 
 Branch: `experiment/pda-custody-private-payment`
 
-Result: **FAILED — DO NOT DEPLOY THE AUDITED ARTIFACT**
+Result: **PASS — eligible for the bounded devnet deployment authorization**
 
-This is a read-only audit of the normal production IDL and artifact. The
-feature-gated rollback-test artifact is not a deployment candidate.
+This audit covers the size-optimized, normal production artifact. It does not
+cover the separate ignored local rollback-test artifact built with
+`test-failure-injection`.
 
-## Requested controls
+## Remediated findings
 
-1. **FAIL — dedicated accountant.** `CompanyVault` contains `company`, two
-   approvers, and `recipient`, but no independent `accountant`. The isolated
-   local identity state likewise has no accountant role. `PaymentReceipt` has
-   an `accountant` field, but execution fills it from `vault.approver_one`.
+The three findings in the previous audit now pass:
 
-2. **FAIL — accountant cannot approve.** Because the receipt's accountant is
-   `approver_one`, that identity is expressly accepted by `approve_payment`.
-   Only the company can invoke `execute_private_payment`, so the accountant
-   cannot execute, but the required non-approver property is not met.
+1. `CompanyVault.accountant` is an independent public key. The isolated state
+   enforces seven distinct identities: company, accountant, two approvers, two
+   recipients, and outsider. `PaymentReceipt.accountant` is copied only from
+   `vault.accountant`.
+2. The accountant cannot approve or execute. `approve_payment` accepts only an
+   intent and a signer matching one of the two immutable approver keys stored
+   in that intent. `execute_private_payment` requires the company signer.
+3. Access is per resource and per payment. A recipient is absent from the
+   company vault and custody eATA permissions and appears only on that
+   recipient's eATA and receipt. Receipt A and receipt B have different PDAs
+   and separately created permissions; selecting recipient B never updates
+   receipt A's permission.
 
-3. **FAIL — recipient visibility isolation.** `accounting_members` includes
-   `vault.recipient`, and that same list is installed on the vault and every
-   receipt by `configure_private_access`. Therefore the recipient can view the
-   company vault and every receipt configured from that vault, rather than
-   only the receipt for that recipient/payment.
+## Permission matrix
 
-4. **PASS — production IDL instruction inventory.** The normal IDL has exactly
-   14 instructions:
+`view` is the exact flag set `TX_LOGS | TX_BALANCES | TX_MESSAGE` (`14`).
+`authority+view` is `AUTHORITY | view` (`15`). No permission grants
+`ACCOUNT_SIGNATURES`.
 
-   | Instruction | Token movement capability |
-   |---|---|
-   | `approve_payment` | None |
-   | `configure_custody_eata_access` | None; permission update only |
-   | `configure_payment` | None |
-   | `configure_private_access` | None; permission creation only |
-   | `delegate_custody_eata` | None; delegation only |
-   | `delegate_global_vault_eata` | None; delegation only |
-   | `delegate_intent` | None; delegation only |
-   | `delegate_receipt` | None; delegation only |
-   | `delegate_vault` | None; delegation only |
-   | `execute_private_payment` | Yes; direct SPL Token CPI from custody to the approved recipient |
-   | `initialize_payment_shells` | No token movement; System Program lamport transfer only |
-   | `initialize_vault` | Yes; company-signed SPL funding transfer followed by the vault-signed eSPL deposit path |
-   | `process_undelegation` | None; SDK-generated undelegation callback |
-   | `rotate_recipient` | None |
+| Permissioned resource | Company | Accountant | Approver 1 | Approver 2 | Selected recipient | Other recipient / outsider |
+|---|---:|---:|---:|---:|---:|---:|
+| CompanyVault | authority+view | view | none | none | none | none |
+| Custody eATA | authority+view | none | none | none | none | none |
+| PaymentIntent A/B | authority+view | none | authority+view | authority+view | none | none |
+| PaymentReceipt A/B | authority+view | view | none | none | view for that receipt only | none |
+| Recipient eATA A/B | authority+view | none | none | none | authority+view for own eATA | none |
 
-5. **QUALIFIED FAIL under the literal requirement.**
-   `execute_private_payment` is the only production instruction that directly
-   calls `anchor_spl::token::transfer` with `CompanyVault` as authority.
-   However, `initialize_vault` invokes the eSPL deposit instruction with
-   `CompanyVault` signer seeds; the eSPL deposit consumes that signer while
-   moving tokens into custody. It cannot pay an arbitrary recipient, but it is
-   another production path that makes the vault sign a token-moving CPI chain.
+The vault permission is created once. Each intent and receipt permission is
+created once at its payment-specific PDA. Recipient eATA self-onboarding uses
+the selected recipient as payer and signer with the pinned SDK's eATA
+initialization, permission update, and delegation instructions. This path is
+locally validated but remains a live claim only after authenticated PER tests.
 
-6. **PASS for payment outflow bypass.** There is no recovery, withdrawal, or
-   fallback instruction in the production IDL. The only test instruction is
-   feature-gated and absent from the normal IDL/artifact. `rotate_recipient` is
-   an administrative state instruction but cannot move tokens. The only
-   custody-to-recipient outflow instruction is `execute_private_payment`, and
-   it calls `validate_execution` before the CPI. That validation requires the
-   exact custody PDA, USDC mint, source/destination bindings, amount, random
-   payment ID, intent hash, current wallet revision, two-bit/two-count approval
-   state, `APPROVED`, not executed, receipt `INITIALIZED`, and configured
-   private access.
+## Approval and execution invariants
 
-7. **PASS — no failure injection in production.** The normal IDL has no
-   `test_fail_after_cpi`, and the string is absent from the normal ELF. The
-   source implementation is protected by
-   `#[cfg(feature = "test-failure-injection")]` and exists only in the separate
-   local rollback-test artifact.
+- The payment ID is nonzero, random, and part of the intent/receipt PDA seeds.
+- The intent hash commits to program, vault, payment ID, exact devnet USDC mint,
+  recipient, source/destination eATAs, source/destination token views, amount,
+  and wallet revision.
+- Approval uses two fixed, distinct identities and a two-bit mask plus count.
+  One approval stays PENDING; duplicates and unknown identities fail.
+- Execution requires the exact custody PDA, its PDA-owned source token view,
+  exact recipient/destination, exact Circle devnet USDC mint, exact positive
+  amount, current wallet revision, matching payment ID/hash, two approvals,
+  APPROVED status, unexecuted intent, and INITIALIZED receipt.
+- One top-level `execute_private_payment` instruction invokes SPL Token using
+  `CpiContext::new_with_signer`, then marks the intent EXECUTED and writes the
+  receipt PAID. SVM rollback covers all three effects.
+- The company wallet is not the source token authority and cannot directly
+  sign a custody transfer.
 
-8. **PASS — program identity.** Running `solana address` against the ignored
-   program keypair returned exactly
-   `AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo`. The normal IDL address and
-   Rust `declare_id!` match it.
+## Production instruction inventory
 
-9. **PASS — artifact provenance.** The normal deployment artifact SHA-256 is
-   exactly
-   `62625984161b1ee7017941387574d52a410d20953e46027ac95e3a63509b2f10`
-   and its size is 521,576 bytes.
+The generated normal IDL contains exactly 15 instructions:
 
-10. **PASS — sensitive/generated files are untracked.** Repository ignore
-    rules cover `.lab/`, all `node_modules/`, all `target/` directories,
-    `**/*keypair*.json`, `.env` files except explicit examples, and PEM files.
-    `git ls-files` found no tracked `.lab`, `node_modules`, `target`, keypair,
-    `.so`, wallet, or secret environment file. The only matching tracked file
-    was the intentionally public `private-receipt/.env.example`.
+| Instruction | Transfer capability / classification |
+|---|---|
+| `approve_payment` | None; one immutable approver updates one intent |
+| `configure_custody_eata_access` | None; custody permission update only |
+| `configure_payment` | None; binds one private intent |
+| `configure_payment_private_access` | None; creates one intent and one receipt permission |
+| `configure_vault_private_access` | None; creates the one-time vault permission |
+| `delegate_custody_eata` | None; eATA delegation only |
+| `delegate_global_vault_eata` | None; shared global eATA delegation only |
+| `delegate_intent` | None; state delegation only |
+| `delegate_receipt` | None; state delegation only |
+| `delegate_vault` | None; state delegation only |
+| `execute_private_payment` | **Only custody outflow**; vault-PDA-signed SPL Token transfer after full intent validation |
+| `initialize_payment_shells` | No token movement; creates sparse public state shells and funds permission rent |
+| `initialize_vault` | **Inward funding/deposit only**; company funds the vault ATA and the vault signs the eSPL deposit into its own custody eATA |
+| `process_undelegation` | None; SDK-generated delegation callback |
+| `rotate_recipient` | None; company-only recipient/revision state update |
 
-## Deployment decision
+`execute_private_payment` is the only instruction capable of transferring
+tokens outward from custody. `initialize_vault` also uses vault signer seeds in
+the eSPL deposit CPI chain, but its accounts and fixed flow can only move the
+company's initial funding inward into the same vault's custody. There is no
+admin, recovery, withdrawal, fallback, or arbitrary-transfer instruction.
 
-The user's deployment approval was conditional on every requested check
-passing and was bound to the audited SHA-256. Checks 1, 2, 3, and the literal
-form of 5 do not pass. Therefore the artifact was not deployed and no devnet
-write was attempted. Correcting these findings will change the program state
-layout, IDL, ELF, and artifact hash, so a newly built artifact will require a
-new explicit deployment approval.
+## Atomicity and negative evidence
+
+- Rust unit/model tests cover wrong custody, source, destination, recipient,
+  amount, mint, revision, payment ID, hash, approval count/mask, status,
+  replay, and paid receipt rejection.
+- JavaScript tests cover independent-accountant isolation, duplicate/unknown
+  approvals, two recipients, stable shared custody, separate per-receipt
+  permissions, and self-onboarding instruction ownership.
+- Compiled local-SVM success moves exactly 10,000 base units, observes the SPL
+  Token CPI at invocation depth 2, marks the intent EXECUTED, and writes the
+  receipt PAID with the independent accountant.
+- An insufficient-funds token CPI leaves both token accounts, intent, and
+  receipt unchanged.
+- A local-only post-CPI forced error rolls back the successful token CPI and
+  receipt mutation.
+
+## Production provenance
+
+- Program keypair public key:
+  `AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo`
+- The keypair, Rust `declare_id!`, generated IDL, and both Anchor devnet/localnet
+  declarations match.
+- Normal size-optimized artifact:
+  `pda-custody/target/deploy/pda_custody_private_payment.so`
+- SHA-256:
+  `86ec1ac50ce2601eb4c265b0b3f19c9f6b5da1298adc2564f56082cd2454d37e`
+- Size: 460,760 bytes.
+- The fixed MagicBlock devnet RPC returned genesis
+  `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG` and a ProgramData rent
+  estimate of 2,341,539,640 lamports for 460,805 bytes.
+- The normal IDL and ELF contain no failure-injection instruction/symbol. The
+  source-only rollback probe is feature-gated and exists only in a separate
+  ignored local artifact.
+- `.lab/`, all `target/` directories, keypairs, secrets, node modules, compiled
+  `.so` files, and environment files are ignored and untracked. Local
+  `*.before-*` backups are preserved and untracked.
+
+## Pre-deployment conclusion
+
+The source and exact production artifact pass the local security and
+provenance gates. Deployment is restricted to the isolated program ID and the
+verified MagicBlock/Solana devnet. No conclusion about live PER enforcement is
+made here; that evidence must come from authenticated positive controls and
+matched unauthorized controls after deployment and isolated setup.

@@ -221,7 +221,7 @@ export function paymentIntentHash({
     .digest();
 }
 
-export function recordApproval(intent, signer, vault) {
+export function recordApproval(intent, signer) {
   if (intent.executed || intent.status === INTENT_EXECUTED) {
     fail("IntentAlreadyExecuted");
   }
@@ -230,8 +230,8 @@ export function recordApproval(intent, signer, vault) {
   }
 
   let bit;
-  if (signer === vault.approverOne) bit = 1;
-  else if (signer === vault.approverTwo) bit = 2;
+  if (signer === intent.approverOne) bit = 1;
+  else if (signer === intent.approverTwo) bit = 2;
   else fail("UnknownApprover");
 
   if ((intent.approvalMask & bit) !== 0) fail("DuplicateApprover");
@@ -352,7 +352,7 @@ export function executeAtomic(state, args, failure = {}) {
   pending.intent.executedAt = 1_700_000_000n;
   Object.assign(pending.receipt, {
     company: pending.vault.company,
-    accountant: pending.vault.approverOne,
+    accountant: pending.vault.accountant,
     recipient: args.recipient,
     sourceEata: args.expectedSourceEata,
     destinationEata: args.expectedDestinationEata,

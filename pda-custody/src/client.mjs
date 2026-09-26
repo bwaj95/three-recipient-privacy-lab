@@ -40,7 +40,7 @@ export const PER_RPC = "https://devnet-tee.magicblock.app";
 export const DEVNET_GENESIS =
   "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 export const PAYMENT_AMOUNT = 10_000n;
-export const WALLET_REVISION = 1n;
+export const INITIAL_CUSTODY_AMOUNT = 20_000n;
 
 const EXPERIMENT_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -58,13 +58,15 @@ export const STATE_PATH = path.join(
 
 const IDENTITY_NAMES = [
   "company",
+  "accountant",
   "approverOne",
   "approverTwo",
-  "recipient",
+  "recipientA",
+  "recipientB",
   "outsider",
 ];
 
-function connection(endpoint) {
+export function connection(endpoint) {
   return new Connection(endpoint, {
     commitment: "confirmed",
     disableRetryOnRateLimit: true,
@@ -80,7 +82,7 @@ function connection(endpoint) {
   });
 }
 
-function readIdl() {
+export function readIdl() {
   if (!fs.existsSync(IDL_PATH)) {
     throw new Error("Missing generated IDL. Run `anchor build` first.");
   }
@@ -91,7 +93,7 @@ function readIdl() {
   return idl;
 }
 
-function keypairsFromState(state) {
+export function keypairsFromState(state) {
   const identities = {};
   for (const name of IDENTITY_NAMES) {
     const encoded = state.keys?.[name];
@@ -104,6 +106,12 @@ function keypairsFromState(state) {
     }
     identities[name] = keypair;
   }
+  const publicKeys = IDENTITY_NAMES.map((name) =>
+    identities[name].publicKey.toBase58(),
+  );
+  if (new Set(publicKeys).size !== publicKeys.length) {
+    throw new Error("Isolated identity roles must use distinct public keys.");
+  }
   return identities;
 }
 
@@ -114,7 +122,7 @@ export function loadLocalState({ required = true } = {}) {
   }
   const state = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
   if (
-    state.version !== 1 ||
+    state.version !== 2 ||
     state.cluster !== "devnet" ||
     state.programId !== PROGRAM_ID.toBase58()
   ) {
@@ -138,6 +146,18 @@ function writeStateExclusively(state) {
   fs.chmodSync(STATE_PATH, 0o600);
 }
 
+export function saveLocalState(state) {
+  if (
+    state.version !== 2 ||
+    state.cluster !== "devnet" ||
+    state.programId !== PROGRAM_ID.toBase58()
+  ) {
+    throw new Error("Refusing to persist an unexpected isolated state header.");
+  }
+  keypairsFromState(state);
+  writeStateExclusively(state);
+}
+
 export function initializeLocalState() {
   if (fs.existsSync(STATE_PATH)) {
     throw new Error("Refusing to overwrite existing isolated PDA-custody state.");
@@ -145,9 +165,10 @@ export function initializeLocalState() {
   const identities = Object.fromEntries(
     IDENTITY_NAMES.map((name) => [name, Keypair.generate()]),
   );
-  const paymentId = randomPaymentId();
+  const paymentA = randomPaymentId();
+  const paymentB = randomPaymentId();
   const state = {
-    version: 1,
+    version: 2,
     cluster: "devnet",
     programId: PROGRAM_ID.toBase58(),
     publicKeys: Object.fromEntries(
@@ -162,10 +183,19 @@ export function initializeLocalState() {
         Array.from(identities[name].secretKey),
       ]),
     ),
-    payment: {
-      paymentIdHex: paymentId.toString("hex"),
-      amountBaseUnits: PAYMENT_AMOUNT.toString(),
-      walletRevision: WALLET_REVISION.toString(),
+    payments: {
+      A: {
+        recipientRole: "recipientA",
+        paymentIdHex: paymentA.toString("hex"),
+        amountBaseUnits: PAYMENT_AMOUNT.toString(),
+        walletRevision: "1",
+      },
+      B: {
+        recipientRole: "recipientB",
+        paymentIdHex: paymentB.toString("hex"),
+        amountBaseUnits: PAYMENT_AMOUNT.toString(),
+        walletRevision: "2",
+      },
     },
     transactions: {},
     observations: {},
@@ -179,23 +209,92 @@ export function initializeLocalState() {
   };
 }
 
-export function deriveContext(state) {
+export function migrateLocalState() {
+  if (!fs.existsSync(STATE_PATH)) {
+    throw new Error("Missing isolated PDA-custody state; run `init-local`.");
+  }
+  const state = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
+  if (state.version === 2) {
+    keypairsFromState(state);
+    return {
+      statePath: path.relative(REPOSITORY_ROOT, STATE_PATH),
+      version: 2,
+      alreadyMigrated: true,
+      publicKeys: state.publicKeys,
+      secretsPrinted: false,
+    };
+  }
+  if (
+    state.version !== 1 ||
+    state.cluster !== "devnet" ||
+    state.programId !== PROGRAM_ID.toBase58()
+  ) {
+    throw new Error("Unexpected isolated PDA-custody state header.");
+  }
+  const recipient = Keypair.fromSecretKey(Uint8Array.from(state.keys.recipient));
+  if (state.publicKeys.recipient !== recipient.publicKey.toBase58()) {
+    throw new Error("Legacy recipient public-key integrity check failed.");
+  }
+  const accountant = Keypair.generate();
+  const recipientB = Keypair.generate();
+  state.version = 2;
+  state.publicKeys.accountant = accountant.publicKey.toBase58();
+  state.publicKeys.recipientA = recipient.publicKey.toBase58();
+  state.publicKeys.recipientB = recipientB.publicKey.toBase58();
+  state.keys.accountant = Array.from(accountant.secretKey);
+  state.keys.recipientA = Array.from(recipient.secretKey);
+  state.keys.recipientB = Array.from(recipientB.secretKey);
+  delete state.publicKeys.recipient;
+  delete state.keys.recipient;
+  state.payments = {
+    A: {
+      recipientRole: "recipientA",
+      paymentIdHex: state.payment.paymentIdHex,
+      amountBaseUnits: PAYMENT_AMOUNT.toString(),
+      walletRevision: "1",
+    },
+    B: {
+      recipientRole: "recipientB",
+      paymentIdHex: randomPaymentId().toString("hex"),
+      amountBaseUnits: PAYMENT_AMOUNT.toString(),
+      walletRevision: "2",
+    },
+  };
+  delete state.payment;
+  writeStateExclusively(state);
+  keypairsFromState(state);
+  return {
+    statePath: path.relative(REPOSITORY_ROOT, STATE_PATH),
+    version: 2,
+    alreadyMigrated: false,
+    publicKeys: state.publicKeys,
+    secretsPrinted: false,
+  };
+}
+
+export function deriveContext(state, paymentLabel = "A") {
   const identities = keypairsFromState(state);
-  const paymentId = Buffer.from(state.payment.paymentIdHex, "hex");
-  const amount = BigInt(state.payment.amountBaseUnits);
-  const walletRevision = BigInt(state.payment.walletRevision);
-  if (amount !== PAYMENT_AMOUNT || walletRevision !== WALLET_REVISION) {
+  const payment = state.payments?.[paymentLabel];
+  if (!payment || !["recipientA", "recipientB"].includes(payment.recipientRole)) {
+    throw new Error(`Unknown isolated payment ${paymentLabel}.`);
+  }
+  const recipient = identities[payment.recipientRole];
+  const paymentId = Buffer.from(payment.paymentIdHex, "hex");
+  const amount = BigInt(payment.amountBaseUnits);
+  const walletRevision = BigInt(payment.walletRevision);
+  const expectedRevision = paymentLabel === "A" ? 1n : 2n;
+  if (amount !== PAYMENT_AMOUNT || walletRevision !== expectedRevision) {
     throw new Error("Isolated payment does not match the fixed experiment plan.");
   }
   const accounts = derivePaymentAccounts({
     company: identities.company.publicKey,
-    recipient: identities.recipient.publicKey,
+    recipient: recipient.publicKey,
     paymentId,
   });
   const intentHash = paymentIntentHash({
     vault: accounts.vault,
     paymentId,
-    recipient: identities.recipient.publicKey,
+    recipient: recipient.publicKey,
     sourceEata: accounts.sourceEata,
     destinationEata: accounts.destinationEata,
     sourceTokenAccount: accounts.sourceTokenAccount,
@@ -203,7 +302,17 @@ export function deriveContext(state) {
     amount,
     walletRevision,
   });
-  return { identities, paymentId, amount, walletRevision, accounts, intentHash };
+  return {
+    paymentLabel,
+    recipientRole: payment.recipientRole,
+    recipient,
+    identities,
+    paymentId,
+    amount,
+    walletRevision,
+    accounts,
+    intentHash,
+  };
 }
 
 function providerFor(rpc, signer, idl = readIdl()) {
@@ -223,10 +332,21 @@ function delegationAccounts(prefix, delegated) {
   };
 }
 
-export async function buildInstructionPlan(state, rpc = connection(BASE_RPC)) {
-  const context = deriveContext(state);
-  const { identities, paymentId, amount, walletRevision, accounts, intentHash } =
-    context;
+export async function buildInstructionPlan(
+  state,
+  rpc = connection(BASE_RPC),
+  paymentLabel = "A",
+) {
+  const context = deriveContext(state, paymentLabel);
+  const {
+    recipient,
+    identities,
+    paymentId,
+    amount,
+    walletRevision,
+    accounts,
+    intentHash,
+  } = context;
   const { program } = providerFor(rpc, identities.company);
   const common = {
     ownerProgram: PROGRAM_ID,
@@ -241,10 +361,11 @@ export async function buildInstructionPlan(state, rpc = connection(BASE_RPC)) {
 
   const initializeVault = await program.methods
     .initializeVault(
+      identities.accountant.publicKey,
       identities.approverOne.publicKey,
       identities.approverTwo.publicKey,
-      identities.recipient.publicKey,
-      new anchor.BN(amount.toString()),
+      identities.recipientA.publicKey,
+      new anchor.BN(INITIAL_CUSTODY_AMOUNT.toString()),
     )
     .accountsStrict({
       company: identities.company.publicKey,
@@ -313,32 +434,30 @@ export async function buildInstructionPlan(state, rpc = connection(BASE_RPC)) {
   const authorityViewFlags = mb.AUTHORITY_FLAG | viewFlags;
   const recipientEataPermissionUpdate = mb.createUpdatePermissionInstruction(
     {
-      authority: [identities.recipient.publicKey, true],
+      authority: [recipient.publicKey, true],
       permissionedAccount: [accounts.destinationEata, false],
     },
     {
       members: [
         { pubkey: identities.company.publicKey, flags: authorityViewFlags },
-        { pubkey: identities.approverOne.publicKey, flags: viewFlags },
-        { pubkey: identities.approverTwo.publicKey, flags: viewFlags },
-        { pubkey: identities.recipient.publicKey, flags: authorityViewFlags },
+        { pubkey: recipient.publicKey, flags: authorityViewFlags },
       ],
     },
   );
   const recipientEataSetup = [
     mb.initEphemeralAtaIx(
       accounts.destinationEata,
-      identities.recipient.publicKey,
+      recipient.publicKey,
       DEVNET_USDC_MINT,
-      identities.company.publicKey,
+      recipient.publicKey,
     ),
     mb.createEataPermissionIx(
       accounts.destinationEata,
-      identities.company.publicKey,
+      recipient.publicKey,
     ),
     recipientEataPermissionUpdate,
     mb.delegateEphemeralAtaIx(
-      identities.company.publicKey,
+      recipient.publicKey,
       accounts.destinationEata,
       DEVNET_TEE_VALIDATOR,
     ),
@@ -391,19 +510,36 @@ export async function buildInstructionPlan(state, rpc = connection(BASE_RPC)) {
     })
     .instruction();
 
-  const configurePrivateAccess = await program.methods
-    .configurePrivateAccess([...paymentId])
+  const configureVaultPrivateAccess = await program.methods
+    .configureVaultPrivateAccess()
+    .accountsStrict({
+      company: identities.company.publicKey,
+      vault: accounts.vault,
+      vaultPermission: accounts.vaultPermission,
+      permissionProgram: PERMISSION_PROGRAM_ID,
+      ephemeralVault: EPHEMERAL_VAULT_ID,
+      magicProgram: MAGIC_PROGRAM_ID,
+    })
+    .instruction();
+  const configurePaymentPrivateAccess = await program.methods
+    .configurePaymentPrivateAccess([...paymentId])
     .accountsStrict({
       company: identities.company.publicKey,
       vault: accounts.vault,
       intent: accounts.intent,
       receipt: accounts.receipt,
-      vaultPermission: accounts.vaultPermission,
       intentPermission: accounts.intentPermission,
       receiptPermission: accounts.receiptPermission,
       permissionProgram: PERMISSION_PROGRAM_ID,
       ephemeralVault: EPHEMERAL_VAULT_ID,
       magicProgram: MAGIC_PROGRAM_ID,
+    })
+    .instruction();
+  const rotateRecipient = await program.methods
+    .rotateRecipient(recipient.publicKey)
+    .accountsStrict({
+      company: identities.company.publicKey,
+      vault: accounts.vault,
     })
     .instruction();
   const configurePayment = await program.methods
@@ -424,7 +560,6 @@ export async function buildInstructionPlan(state, rpc = connection(BASE_RPC)) {
     .approvePayment([...paymentId])
     .accountsStrict({
       approver: identities.approverOne.publicKey,
-      vault: accounts.vault,
       intent: accounts.intent,
     })
     .instruction();
@@ -432,14 +567,13 @@ export async function buildInstructionPlan(state, rpc = connection(BASE_RPC)) {
     .approvePayment([...paymentId])
     .accountsStrict({
       approver: identities.approverTwo.publicKey,
-      vault: accounts.vault,
       intent: accounts.intent,
     })
     .instruction();
   const execute = await program.methods
     .executePrivatePayment(
       [...paymentId],
-      identities.recipient.publicKey,
+      recipient.publicKey,
       new anchor.BN(amount.toString()),
       new anchor.BN(walletRevision.toString()),
       [...intentHash],
@@ -463,12 +597,14 @@ export async function buildInstructionPlan(state, rpc = connection(BASE_RPC)) {
       { name: "base.configureCustodyEataAccess", signers: ["company"], instructions: [configureCustodyEataAccess] },
       { name: "base.delegateGlobalVaultEata", signers: ["company"], instructions: [delegateGlobalVaultEata] },
       { name: "base.delegateCustodyEata", signers: ["company"], instructions: [delegateCustodyEata] },
-      { name: "base.setupRecipientEata", signers: ["company", "recipient"], instructions: recipientEataSetup },
+      { name: "base.setupRecipientEata", signers: [context.recipientRole], instructions: recipientEataSetup },
       { name: "base.initializePaymentShells", signers: ["company"], instructions: [initializePaymentShells] },
       { name: "base.delegateVault", signers: ["company"], instructions: [delegateVault] },
       { name: "base.delegateIntent", signers: ["company"], instructions: [delegateIntent] },
       { name: "base.delegateReceipt", signers: ["company"], instructions: [delegateReceipt] },
-      { name: "per.configurePrivateAccess", signers: ["company"], instructions: [configurePrivateAccess] },
+      { name: "per.configureVaultPrivateAccess", signers: ["company"], instructions: [configureVaultPrivateAccess] },
+      { name: "per.rotateRecipient", signers: ["company"], instructions: paymentLabel === "B" ? [rotateRecipient] : [] },
+      { name: "per.configurePaymentPrivateAccess", signers: ["company"], instructions: [configurePaymentPrivateAccess] },
       { name: "per.configurePayment", signers: ["company"], instructions: [configurePayment] },
       { name: "per.approveOne", signers: ["approverOne"], instructions: [approveOne] },
       { name: "per.approveTwo", signers: ["approverTwo"], instructions: [approveTwo] },
@@ -477,15 +613,26 @@ export async function buildInstructionPlan(state, rpc = connection(BASE_RPC)) {
   };
 }
 
-function publicDerivationSummary(state) {
-  const { identities, accounts, paymentId, amount, walletRevision, intentHash } =
-    deriveContext(state);
+function publicDerivationSummary(state, paymentLabel = "A") {
+  const {
+    recipient,
+    recipientRole,
+    identities,
+    accounts,
+    paymentId,
+    amount,
+    walletRevision,
+    intentHash,
+  } = deriveContext(state, paymentLabel);
   return {
+    paymentLabel,
     programId: PROGRAM_ID.toBase58(),
     company: identities.company.publicKey.toBase58(),
+    accountant: identities.accountant.publicKey.toBase58(),
     approverOne: identities.approverOne.publicKey.toBase58(),
     approverTwo: identities.approverTwo.publicKey.toBase58(),
-    recipient: identities.recipient.publicKey.toBase58(),
+    recipientRole,
+    recipient: recipient.publicKey.toBase58(),
     vault: accounts.vault.toBase58(),
     custodyEata: accounts.sourceEata.toBase58(),
     custodyPerTokenView: accounts.sourceTokenAccount.toBase58(),
@@ -564,7 +711,7 @@ function accountFingerprint(info) {
   };
 }
 
-async function authenticatedPer(identity) {
+export async function authenticatedPer(identity) {
   const auth = await mb.getAuthToken(
     PER_RPC,
     identity.publicKey,
@@ -573,16 +720,16 @@ async function authenticatedPer(identity) {
   return connection(`${PER_RPC}?token=${encodeURIComponent(auth.token)}`);
 }
 
-export async function simulateExecuteOnly(state) {
+export async function simulateExecuteOnly(state, paymentLabel = "A") {
   const baseCheck = await readOnlyCheck();
   if (!baseCheck.programDeployed) {
     throw new Error(
       "Isolated program is not deployed; PER execution simulation cannot run before deployment approval.",
     );
   }
-  const { identities, accounts } = deriveContext(state);
+  const { identities, accounts } = deriveContext(state, paymentLabel);
   const per = await authenticatedPer(identities.company);
-  const plan = await buildInstructionPlan(state, per);
+  const plan = await buildInstructionPlan(state, per, paymentLabel);
   const executeGroup = plan.groups.find(
     (group) => group.name === "per.executeSimulationOnly",
   );
@@ -627,28 +774,47 @@ export async function simulateExecuteOnly(state) {
 
 export async function runCommand(command) {
   if (command === "init-local") return initializeLocalState();
+  if (command === "migrate-local") return migrateLocalState();
   if (command === "check") return readOnlyCheck();
   const state = loadLocalState();
-  if (command === "derive") return publicDerivationSummary(state);
-  if (command === "plan") {
-    const plan = await buildInstructionPlan(state);
+  if (command === "derive") {
     return {
-      ...publicDerivationSummary(state),
-      groups: plan.groups.map((group) => ({
-        name: group.name,
-        signers: group.signers,
-        instructions: group.instructions.length,
-        accountMetas: group.instructions.reduce(
-          (sum, instruction) => sum + instruction.keys.length,
-          0,
-        ),
+      A: publicDerivationSummary(state, "A"),
+      B: publicDerivationSummary(state, "B"),
+    };
+  }
+  if (command === "plan") {
+    const plans = await Promise.all(
+      ["A", "B"].map(async (label) => ({
+        label,
+        plan: await buildInstructionPlan(state, connection(BASE_RPC), label),
       })),
+    );
+    return {
+      payments: Object.fromEntries(
+        plans.map(({ label, plan }) => [
+          label,
+          {
+            ...publicDerivationSummary(state, label),
+            groups: plan.groups.map((group) => ({
+              name: group.name,
+              signers: group.signers,
+              instructions: group.instructions.length,
+              accountMetas: group.instructions.reduce(
+                (sum, instruction) => sum + instruction.keys.length,
+                0,
+              ),
+            })),
+          },
+        ]),
+      ),
       transactionsSubmitted: 0,
     };
   }
-  if (command === "simulate-execute") return simulateExecuteOnly(state);
+  if (command === "simulate-execute-a") return simulateExecuteOnly(state, "A");
+  if (command === "simulate-execute-b") return simulateExecuteOnly(state, "B");
   throw new Error(
-    "Usage: init-local | check | derive | plan | simulate-execute",
+    "Usage: init-local | migrate-local | check | derive | plan | simulate-execute-a | simulate-execute-b",
   );
 }
 

@@ -31,8 +31,12 @@ use validation::{payment_intent_hash, record_approval, validate_execution, Execu
 
 declare_id!("AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo");
 
-fn accounting_members(vault: &CompanyVault) -> Vec<Member> {
-    let view_flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
+fn view_flags() -> u8 {
+    TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG
+}
+
+fn vault_members(vault: &CompanyVault) -> Vec<Member> {
+    let view_flags = view_flags();
     vec![
         Member {
             flags: AUTHORITY_FLAG | view_flags,
@@ -40,11 +44,46 @@ fn accounting_members(vault: &CompanyVault) -> Vec<Member> {
         },
         Member {
             flags: view_flags,
+            pubkey: vault.accountant,
+        },
+    ]
+}
+
+fn custody_members(vault: &CompanyVault) -> Vec<Member> {
+    vec![Member {
+        flags: AUTHORITY_FLAG | view_flags(),
+        pubkey: vault.company,
+    }]
+}
+
+fn intent_members(vault: &CompanyVault) -> Vec<Member> {
+    let view_flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
+    vec![
+        Member {
+            flags: AUTHORITY_FLAG | view_flags,
+            pubkey: vault.company,
+        },
+        Member {
+            flags: AUTHORITY_FLAG | view_flags,
             pubkey: vault.approver_one,
         },
         Member {
-            flags: view_flags,
+            flags: AUTHORITY_FLAG | view_flags,
             pubkey: vault.approver_two,
+        },
+    ]
+}
+
+fn receipt_members(vault: &CompanyVault) -> Vec<Member> {
+    let view_flags = view_flags();
+    vec![
+        Member {
+            flags: AUTHORITY_FLAG | view_flags,
+            pubkey: vault.company,
+        },
+        Member {
+            flags: view_flags,
+            pubkey: vault.accountant,
         },
         Member {
             flags: view_flags,
@@ -53,20 +92,14 @@ fn accounting_members(vault: &CompanyVault) -> Vec<Member> {
     ]
 }
 
-fn intent_members(vault: &CompanyVault) -> Vec<Member> {
-    let mut members = accounting_members(vault);
-    members[1].flags |= AUTHORITY_FLAG;
-    members[2].flags |= AUTHORITY_FLAG;
-    members
-}
-
 fn validate_identity_set(
     company: Pubkey,
+    accountant: Pubkey,
     approver_one: Pubkey,
     approver_two: Pubkey,
     recipient: Pubkey,
 ) -> Result<()> {
-    let values = [company, approver_one, approver_two, recipient];
+    let values = [company, accountant, approver_one, approver_two, recipient];
     require!(
         values.iter().all(|key| *key != Pubkey::default()),
         CustodyError::InvalidIdentitySet
@@ -89,6 +122,7 @@ mod permission_tests {
     fn vault() -> CompanyVault {
         CompanyVault {
             company: Pubkey::new_unique(),
+            accountant: Pubkey::new_unique(),
             approver_one: Pubkey::new_unique(),
             approver_two: Pubkey::new_unique(),
             recipient: Pubkey::new_unique(),
@@ -104,19 +138,38 @@ mod permission_tests {
     }
 
     #[test]
-    fn only_intent_grants_approvers_write_authority() {
+    fn permission_sets_are_least_privilege() {
         let vault = vault();
-        let accounting = accounting_members(&vault);
+        let vault_access = vault_members(&vault);
+        let custody = custody_members(&vault);
         let intent = intent_members(&vault);
+        let receipt = receipt_members(&vault);
 
-        assert_ne!(accounting[0].flags & AUTHORITY_FLAG, 0);
-        assert_eq!(accounting[1].flags & AUTHORITY_FLAG, 0);
-        assert_eq!(accounting[2].flags & AUTHORITY_FLAG, 0);
-        assert_eq!(accounting[3].flags & AUTHORITY_FLAG, 0);
+        assert_eq!(vault_access.len(), 2);
+        assert_eq!(vault_access[0].pubkey, vault.company);
+        assert_ne!(vault_access[0].flags & AUTHORITY_FLAG, 0);
+        assert_eq!(vault_access[1].pubkey, vault.accountant);
+        assert_eq!(vault_access[1].flags & AUTHORITY_FLAG, 0);
+        assert_eq!(custody.len(), 1);
+        assert_eq!(custody[0].pubkey, vault.company);
         assert_ne!(intent[0].flags & AUTHORITY_FLAG, 0);
         assert_ne!(intent[1].flags & AUTHORITY_FLAG, 0);
         assert_ne!(intent[2].flags & AUTHORITY_FLAG, 0);
-        assert_eq!(intent[3].flags & AUTHORITY_FLAG, 0);
+        assert_eq!(receipt.len(), 3);
+        assert_eq!(receipt[0].pubkey, vault.company);
+        assert_eq!(receipt[1].pubkey, vault.accountant);
+        assert_eq!(receipt[1].flags & AUTHORITY_FLAG, 0);
+        assert_eq!(receipt[2].pubkey, vault.recipient);
+        assert_eq!(receipt[2].flags & AUTHORITY_FLAG, 0);
+        assert!(!vault_access
+            .iter()
+            .any(|member| member.pubkey == vault.recipient));
+        assert!(!custody
+            .iter()
+            .any(|member| member.pubkey == vault.recipient));
+        assert!(!receipt
+            .iter()
+            .any(|member| member.pubkey == vault.approver_one));
     }
 }
 
@@ -130,6 +183,7 @@ pub mod pda_custody_private_payment {
     /// to the pinned devnet TEE validator.
     pub fn initialize_vault(
         ctx: Context<InitializeVault>,
+        accountant: Pubkey,
         approver_one: Pubkey,
         approver_two: Pubkey,
         recipient: Pubkey,
@@ -138,6 +192,7 @@ pub mod pda_custody_private_payment {
         require!(initial_amount > 0, CustodyError::InvalidAmount);
         validate_identity_set(
             ctx.accounts.company.key(),
+            accountant,
             approver_one,
             approver_two,
             recipient,
@@ -147,6 +202,7 @@ pub mod pda_custody_private_payment {
         let vault_bump = ctx.bumps.vault;
         let vault = &mut ctx.accounts.vault;
         vault.company = ctx.accounts.company.key();
+        vault.accountant = accountant;
         vault.approver_one = approver_one;
         vault.approver_two = approver_two;
         vault.recipient = recipient;
@@ -281,7 +337,7 @@ pub mod pda_custody_private_payment {
             },
             UpdatePermissionInstructionArgs {
                 args: MembersArgs {
-                    members: Some(accounting_members(&ctx.accounts.vault)),
+                    members: Some(custody_members(&ctx.accounts.vault)),
                 },
             },
         )
@@ -415,28 +471,21 @@ pub mod pda_custody_private_payment {
         Ok(())
     }
 
-    /// Creates private PER permissions for vault, intent, and receipt in one
-    /// atomic instruction. Company remains permission authority; accountant,
-    /// second approver, and recipient receive only transaction-view flags.
-    pub fn configure_private_access(
-        ctx: Context<ConfigurePrivateAccess>,
-        _payment_id: [u8; 32],
-    ) -> Result<()> {
+    /// Creates the vault permission exactly once. Only company can write;
+    /// the independent accountant receives transaction-view flags.
+    pub fn configure_vault_private_access(ctx: Context<ConfigureVaultPrivateAccess>) -> Result<()> {
+        if ctx.accounts.vault.access_configured {
+            require!(
+                ctx.accounts.vault_permission.owner == &PERMISSION_PROGRAM_ID
+                    && !ctx.accounts.vault_permission.data_is_empty(),
+                CustodyError::AccessNotConfigured
+            );
+            return Ok(());
+        }
         require!(
-            !ctx.accounts.vault.access_configured
-                && !ctx.accounts.intent.access_configured
-                && !ctx.accounts.receipt.access_configured,
+            ctx.accounts.vault_permission.lamports() == 0,
             CustodyError::AccessAlreadyConfigured
         );
-        require!(
-            ctx.accounts.vault_permission.lamports() == 0
-                && ctx.accounts.intent_permission.lamports() == 0
-                && ctx.accounts.receipt_permission.lamports() == 0,
-            CustodyError::AccessAlreadyConfigured
-        );
-
-        let accounting_members = accounting_members(&ctx.accounts.vault);
-        let intent_members = intent_members(&ctx.accounts.vault);
         let company = ctx.accounts.vault.company;
         let vault_bump = [ctx.accounts.vault.bump];
         let vault_seeds = [COMPANY_VAULT_SEED, company.as_ref(), &vault_bump];
@@ -449,10 +498,43 @@ pub mod pda_custody_private_payment {
             permission_program: ctx.accounts.permission_program.to_account_info(),
             args: EphemeralMembersArgs {
                 is_private: true,
-                members: accounting_members.clone(),
+                members: vault_members(&ctx.accounts.vault),
             },
         }
         .invoke_signed(&[&vault_seeds])?;
+        ctx.accounts.vault.access_configured = true;
+        Ok(())
+    }
+
+    /// Creates each intent and receipt permission exactly once. The intent is
+    /// writable only by company and the two approvers. The receipt is writable
+    /// only by company and visible only to company, accountant, and this
+    /// payment's selected recipient.
+    pub fn configure_payment_private_access(
+        ctx: Context<ConfigurePaymentPrivateAccess>,
+        _payment_id: [u8; 32],
+    ) -> Result<()> {
+        require!(
+            ctx.accounts.vault.access_configured,
+            CustodyError::AccessNotConfigured
+        );
+        if ctx.accounts.intent.access_configured && ctx.accounts.receipt.access_configured {
+            require!(
+                ctx.accounts.intent_permission.owner == &PERMISSION_PROGRAM_ID
+                    && !ctx.accounts.intent_permission.data_is_empty()
+                    && ctx.accounts.receipt_permission.owner == &PERMISSION_PROGRAM_ID
+                    && !ctx.accounts.receipt_permission.data_is_empty(),
+                CustodyError::AccessNotConfigured
+            );
+            return Ok(());
+        }
+        require!(
+            !ctx.accounts.intent.access_configured
+                && !ctx.accounts.receipt.access_configured
+                && ctx.accounts.intent_permission.lamports() == 0
+                && ctx.accounts.receipt_permission.lamports() == 0,
+            CustodyError::AccessAlreadyConfigured
+        );
 
         let intent_bump = [ctx.accounts.intent.bump];
         let intent_seeds = [
@@ -470,7 +552,7 @@ pub mod pda_custody_private_payment {
             permission_program: ctx.accounts.permission_program.to_account_info(),
             args: EphemeralMembersArgs {
                 is_private: true,
-                members: intent_members,
+                members: intent_members(&ctx.accounts.vault),
             },
         }
         .invoke_signed(&[&intent_seeds])?;
@@ -491,12 +573,11 @@ pub mod pda_custody_private_payment {
             permission_program: ctx.accounts.permission_program.to_account_info(),
             args: EphemeralMembersArgs {
                 is_private: true,
-                members: accounting_members,
+                members: receipt_members(&ctx.accounts.vault),
             },
         }
         .invoke_signed(&[&receipt_seeds])?;
 
-        ctx.accounts.vault.access_configured = true;
         ctx.accounts.intent.access_configured = true;
         ctx.accounts.receipt.access_configured = true;
         Ok(())
@@ -568,6 +649,8 @@ pub mod pda_custody_private_payment {
         );
 
         let intent = &mut ctx.accounts.intent;
+        intent.approver_one = ctx.accounts.vault.approver_one;
+        intent.approver_two = ctx.accounts.vault.approver_two;
         intent.mint = DEVNET_USDC_MINT;
         intent.recipient = recipient;
         intent.source_eata = source_eata;
@@ -590,8 +673,8 @@ pub mod pda_custody_private_payment {
             ctx.accounts.intent.status,
             ctx.accounts.intent.executed,
             ctx.accounts.approver.key(),
-            ctx.accounts.vault.approver_one,
-            ctx.accounts.vault.approver_two,
+            ctx.accounts.intent.approver_one,
+            ctx.accounts.intent.approver_two,
         )
         .map_err(anchor_lang::error::Error::from)?;
         ctx.accounts.intent.approval_mask = result.mask;
@@ -607,6 +690,7 @@ pub mod pda_custody_private_payment {
         );
         require!(
             recipient != ctx.accounts.vault.company
+                && recipient != ctx.accounts.vault.accountant
                 && recipient != ctx.accounts.vault.approver_one
                 && recipient != ctx.accounts.vault.approver_two,
             CustodyError::InvalidIdentitySet
@@ -738,7 +822,7 @@ pub mod pda_custody_private_payment {
 
         let receipt = &mut ctx.accounts.receipt;
         receipt.company = ctx.accounts.vault.company;
-        receipt.accountant = ctx.accounts.vault.approver_one;
+        receipt.accountant = ctx.accounts.vault.accountant;
         receipt.recipient = recipient;
         receipt.source_eata = expected_source_eata;
         receipt.destination_eata = expected_destination_eata;
@@ -784,7 +868,7 @@ pub mod pda_custody_private_payment {
 }
 
 #[derive(Accounts)]
-#[instruction(approver_one: Pubkey, approver_two: Pubkey, recipient: Pubkey, initial_amount: u64)]
+#[instruction(accountant: Pubkey, approver_one: Pubkey, approver_two: Pubkey, recipient: Pubkey, initial_amount: u64)]
 pub struct InitializeVault<'info> {
     #[account(mut)]
     pub company: Signer<'info>,
@@ -1031,11 +1115,34 @@ pub struct DelegateReceipt<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(payment_id: [u8; 32])]
-pub struct ConfigurePrivateAccess<'info> {
+pub struct ConfigureVaultPrivateAccess<'info> {
     pub company: Signer<'info>,
     #[account(
         mut,
+        seeds = [COMPANY_VAULT_SEED, company.key().as_ref()],
+        has_one = company,
+        bump = vault.bump
+    )]
+    pub vault: Account<'info, CompanyVault>,
+    #[account(mut, seeds = [PERMISSION_SEED, vault.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
+    /// CHECK: Permission PDA for vault.
+    pub vault_permission: UncheckedAccount<'info>,
+    #[account(address = PERMISSION_PROGRAM_ID)]
+    /// CHECK: Fixed Permission Program.
+    pub permission_program: UncheckedAccount<'info>,
+    #[account(mut, address = EPHEMERAL_VAULT_ID)]
+    /// CHECK: Fixed permission rent vault.
+    pub ephemeral_vault: UncheckedAccount<'info>,
+    #[account(address = MAGIC_PROGRAM_ID)]
+    /// CHECK: Fixed Magic Program.
+    pub magic_program: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(payment_id: [u8; 32])]
+pub struct ConfigurePaymentPrivateAccess<'info> {
+    pub company: Signer<'info>,
+    #[account(
         seeds = [COMPANY_VAULT_SEED, company.key().as_ref()],
         has_one = company,
         bump = vault.bump
@@ -1055,9 +1162,6 @@ pub struct ConfigurePrivateAccess<'info> {
         bump = receipt.bump
     )]
     pub receipt: Account<'info, PaymentReceipt>,
-    #[account(mut, seeds = [PERMISSION_SEED, vault.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
-    /// CHECK: Permission PDA for vault.
-    pub vault_permission: UncheckedAccount<'info>,
     #[account(mut, seeds = [PERMISSION_SEED, intent.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
     /// CHECK: Permission PDA for intent.
     pub intent_permission: UncheckedAccount<'info>,
@@ -1104,12 +1208,9 @@ pub struct ConfigurePayment<'info> {
 #[instruction(payment_id: [u8; 32])]
 pub struct ApprovePayment<'info> {
     pub approver: Signer<'info>,
-    #[account(seeds = [COMPANY_VAULT_SEED, vault.company.as_ref()], bump = vault.bump)]
-    pub vault: Account<'info, CompanyVault>,
     #[account(
         mut,
-        seeds = [PAYMENT_INTENT_SEED, vault.key().as_ref(), payment_id.as_ref()],
-        has_one = vault,
+        seeds = [PAYMENT_INTENT_SEED, intent.vault.as_ref(), payment_id.as_ref()],
         bump = intent.bump
     )]
     pub intent: Account<'info, PaymentIntent>,

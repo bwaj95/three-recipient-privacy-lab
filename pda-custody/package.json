@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test-isolation=none --test tests/*.test.mjs",
-    "check": "node --check src/model.mjs && node --check scripts/pda-custody-private-payment.mjs"
+    "check": "node --check src/model.mjs && node --check src/client.mjs && node --check scripts/pda-custody-private-payment.mjs && node --check scripts/live-pda-custody.mjs"
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.32.1",

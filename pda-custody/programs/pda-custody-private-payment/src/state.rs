@@ -5,6 +5,7 @@ use crate::constants::{INTENT_PENDING, RECEIPT_INITIALIZED};
 #[account]
 pub struct CompanyVault {
     pub company: Pubkey,
+    pub accountant: Pubkey,
     pub approver_one: Pubkey,
     pub approver_two: Pubkey,
     pub recipient: Pubkey,
@@ -19,13 +20,15 @@ pub struct CompanyVault {
 }
 
 impl CompanyVault {
-    pub const SPACE: usize = 8 + (7 * 32) + 8 + 4;
+    pub const SPACE: usize = 8 + (8 * 32) + 8 + 4;
 }
 
 #[account]
 pub struct PaymentIntent {
     pub vault: Pubkey,
     pub payment_id: [u8; 32],
+    pub approver_one: Pubkey,
+    pub approver_two: Pubkey,
     pub mint: Pubkey,
     pub recipient: Pubkey,
     pub source_eata: Pubkey,
@@ -45,11 +48,13 @@ pub struct PaymentIntent {
 }
 
 impl PaymentIntent {
-    pub const SPACE: usize = 8 + (8 * 32) + 16 + 32 + 5 + 8 + 2;
+    pub const SPACE: usize = 8 + (10 * 32) + 16 + 32 + 5 + 8 + 2;
 
     pub fn initialize_shell(&mut self, vault: Pubkey, payment_id: [u8; 32], bump: u8) {
         self.vault = vault;
         self.payment_id = payment_id;
+        self.approver_one = Pubkey::default();
+        self.approver_two = Pubkey::default();
         self.mint = Pubkey::default();
         self.recipient = Pubkey::default();
         self.source_eata = Pubkey::default();

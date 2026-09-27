@@ -2,7 +2,7 @@
 
 Last updated: 2026-09-27
 
-Status: **DEPLOYED; LIVE SETUP BLOCKED BEFORE USDC FUNDING**
+Status: **DEPLOYED; LIVE SETUP AND TWO APPROVALS FINALIZED; PAYMENT BLOCKED AT PER INGRESS**
 
 ## Fixed scope
 
@@ -29,7 +29,7 @@ Status: **DEPLOYED; LIVE SETUP BLOCKED BEFORE USDC FUNDING**
 - Deployed-byte verification: `solana program dump` produced an exact byte-for-byte match with the approved local artifact and the same SHA-256.
 - Known buffer `HMUJssvAgtjonKX1oHe7gXDuV88ftUDWLaurogZkfa1F` was consumed to zero by the finalized deployment.
 
-Security note: a verbose CLI confirmation echoed the environment-provided RPC URL into transient tool output. The URL/key is absent from repository files and commits, but the credential should be rotated before live work resumes.
+Security note: an earlier verbose CLI confirmation echoed a now-rotated environment-provided RPC URL into transient tool output. Neither the retired credential nor its replacement is present in repository files or commits.
 
 No redeployment, upgrade, close, or modification was performed after this reconciliation.
 
@@ -57,6 +57,23 @@ Payment A is fixed at 10,000 USDC base units (0.01 USDC). The runner is capped t
 | Semantic action | Signature | Outcome | Finality |
 |---|---|---|---|
 | Fund company, two approvers, and recipient A with minimal devnet SOL | `T5DsyRsMDrnpyaEG1CfJV9qZttdZhViaB1W7k55zYQ11GuemDVuw26u8KH4WQs53XGZSfH2VTvkyi2zRMoJpMh2` | success | finalized |
+| Fund isolated company with 0.02 Circle devnet USDC | `569treCJgDmWXt8DAaxs4dWcnJgBs2h1iqn73cdfAFmnJba9yJmQwWMiiwN8GXvR6gRR86QnRKGotpzcEWtHE3hB` | success | finalized |
+| Initialize CompanyVault and deposit 0.02 USDC | `5M2BKzFeGaAcSDi5joNdkMwZkGhSnniaHvRnT1xHfn6wQ8ySqGDpcWj8D4RT5HzGrJzDx3Gagk7MvH6ZbiPyfT9Z` | success | finalized |
+| Configure custody-eATA access | `5vtKFwZXD5eT8nyGW4neQXawqxDiTpGoTNVQeEyU7GSXkV7gTxjfvbcPWSBbut56p8achamTE9QS7DJAfioH4jH5` | success | finalized |
+| Delegate custody eATA to pinned TEE | `4HDi6nPBmDn972FDYErsbQw2BRfFJSxC351Y5MTdiT5DTdqytHn7MoNZcdNSaQNDT6LzB4tYHtQKc2txzS8NQh2k` | success | finalized |
+| Recipient A self-onboards and delegates its eATA | `4tvW3HkES3gWZpeE57J7dFFV8kUXWmvNeEA5sw21ArEmqnrb53Ag9wLpUaWrASCjgpHcuZD78JbZfsATLHWDW85x` | success | finalized |
+| Initialize payment-A intent/receipt shells | `3WyseMBCCdrAN9yYBPASDxsd7QWNWBb85EPqFafCKWwzqGXgAHRKdSjofa4WWYLno4u6MooxeH3n2ARGQkajs3R7` | success | finalized |
+| Delegate CompanyVault to pinned TEE | `5UByT5EcBAX6xat7oUiurchQCmVQsmrqZAWsAmo29CDhbKqic26X7d8BcR8nEKg3Uf4tVqZTfd1Sigh3MAG5rsC2` | success | finalized |
+| Delegate payment-A intent to pinned TEE | `5TmN7XdgkR81mrGs3r8KdwqmK6CHV2YSrmB3nyULNVSVJHMyCRV5BLn5ozQspv4ML3XQp8n7Ksm1d6Ni6DoAkZge` | success | finalized |
+| Delegate payment-A receipt to pinned TEE | `3ANXgF3h4xpyiRBtqKuWe9byJ5bXDLbrSNgKHubGMqnQ1kGGSU3uWEA35EKhkMi6h7KnprjzNkW2ndvvfKYoy9Qo` | success | finalized |
+| Initialize recipient A canonical token view | `4qaJmxdd4NzFLq5vqfymuePeA6JQAF5Asay4XgCJWJm62WRgKLsasY24FWfyf6JzxmNRsUzsJkw8zkwzuUHTg4KD` | success | finalized |
+| Configure vault private access | `4k5KFg612q2BrRrtpqWVe5ALB5E9k7MHm7Ks8aaDeF25Z1nhRx6B7nB3Je1Qk6Zgy1GK2c5Utbh8qefV7iXNgA2V` | success | finalized |
+| Configure payment-A intent/receipt private access | `4A5nQnthUqwWTpE2M26HA4ER3CHSoywLhPEKZpQCQ3sbhqTcy6rduspheNScJwXoojy4MQ9TXsWbWoeZkfUskAzZ` | success | finalized |
+| Bind payment A to the approved amount/recipient/revision/hash | `65X77KyYEJj8G4kLu9PaLqFUzBPA4jioHrispRsrr9bWPoFh1thniEoo2QgE1c7WXq9upGt5nMR4HRVb7ZwKuu46` | success | finalized |
+| Approver one approves payment A | `5yAJWmMzsV42cfbRrJQtfC1PfidgNrTPD2DwQ6Ac93eVB6FEtCRnWLiRDDhP5QYAsQr7HzY4wfTEFtfp4xpdhdyc` | success | finalized |
+| Approver two approves payment A | `HBLnf1gavgZPVeKfGt2QKcb8jD7oUeVyhyYaejMkrsNvgg9Lip4geWpVCFnSWTVRR8Rc6QtC8f35uDAbfioac9b` | success | finalized |
+| Restore authority-only custody-PDA member on source eATA permission | `2Buc1NDoC4awDX6TiAuLAPp7zwTtDLDG9pTafuDVYMd8cpLutNnnAsxYKQoNqPepo4mrAyz5AR6VkqBamHDz1oGS` | success | finalized |
+| Restore authority-only custody-PDA member on destination eATA permission | `iyJBDBgDWYG7LLKXc6drTeKT4gyVgWhJU5gTxo1UNRQg8JJsqMffs7RrjTU8Y8mdUYX2m7zcVJvJzockQGyKyFC` | success | finalized |
 
 Finalized balances after that transaction:
 
@@ -66,23 +83,59 @@ Finalized balances after that transaction:
 - Approver two: 5,000,000 lamports
 - Recipient A: 35,000,000 lamports
 
-The funding transaction was serialized and durably recorded before submission, simulated successfully, sent once, and reconciled by its exact signature.
+Every submitted transaction was serialized and durably recorded before submission, sent once, and reconciled by its exact signature. All 18 saved signatures remain finalized successes; none is unknown. There is no `payment.A.execute` transaction record.
 
-## Current funding blocker
+Finalized Circle-USDC balances after funding:
 
-The deployer owns no token account for Circle devnet USDC. A read-only inventory found only two unrelated mints. The live runner therefore stopped before creating or submitting a USDC funding transaction.
+- Deployer: 19.98 USDC
+- Isolated company: 0.02 USDC before the program deposit
 
-Circle's official public faucet supports Solana devnet and dispenses 20 test USDC, but its request is protected by reCAPTCHA. After rotating the RPC credential, the safe resumption is to request faucet USDC to the deployer public key `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`; the runner will then transfer only 20,000 base units (0.02 USDC) into the isolated company, within the experiment cap. The faucet credential/UI action cannot be automated or bypassed here.
+## Final account-by-account PER probe
 
-## Work not yet performed
+The company authenticated through the documented signed-challenge flow. Every request below reached `https://devnet-tee.magicblock.app`; every required account was returned and none was filtered.
 
-- CompanyVault/eATA initialization: not submitted
-- Permission creation/delegation: not submitted
-- Approvals: not submitted
-- Payment execution: not submitted
-- Successful private payments: 0
-- Private USDC outflow: 0
-- Live access-control matrix: pending
-- Live negative simulations: pending
+| Role | Address | Returned | PER owner | Relevant private permission |
+|---|---|---:|---|---|
+| CompanyVault | `GhjDy7sMFCfzt4EnrXNHv39y8yDCaeEXo7VfuTd7yE1M` | yes | `AzM25i2W2ifd3MjvFV66vgtJCeqCNmmocsUPNtGg1WDo` | program `0`; company `15`; accountant `14` |
+| Source custody eATA | `DF8HFeS1wqKefrQMv2mxkZHLJTYhAo3vzdRDq2Yc62wk` | yes | `SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2` | Delegation Program `0`; company `15`; vault PDA `1` |
+| Source custody PER token view | `CRSEsAaPyxFjP865Nj5jtNBQcKzcJ2dyRqFkiXebA4P8` | yes | Token Program | same source-eATA permission |
+| PaymentIntent | `3Ks7Jv86EazhKuk8T2h4ZCkuCKmnPtCkUCtj2LcWgmBw` | yes | isolated program | program `0`; company `15`; approver one `15`; approver two `15` |
+| PaymentReceipt | `2Ut3YhoBgkNRnWgGynz8NqrzL58t5Up6LbWEJuLbgWqW` | yes | isolated program | program `0`; company `15`; accountant `14`; recipient A `14` |
+| Destination recipient eATA | `AbwrpUUoT31AngPnx8aEkEfgKQkG5QgzwB4p3wMCtb2a` | yes | eSPL Token Program | Delegation Program `0`; company `15`; recipient A `15`; vault PDA `1` |
+| Destination recipient PER token view | `dnSo4DZTMn9eCANBubYDcampZbspaA6Pt97iBUgBLvt` | yes | Token Program | same destination-eATA permission |
 
-No result is claimed for PER payment atomicity or privacy until authorized positive controls and matched unauthorized controls run successfully. No mainnet action occurred.
+Associated permission addresses:
+
+| Resource | Permission | Base | Authenticated PER |
+|---|---|---|---|
+| CompanyVault | `21dpzCnXEspUEWccSZsBE32wFJow3zaPdvBtrDDaabxw` | absent, as expected for ER-only permission | returned; private; exact members above |
+| Source custody eATA | `7ka51nn41qkrfgSfwpx2WvEQiaoDvgkt3zq1TL2fofqj` | returned | returned; byte-equivalent decoded members/flags |
+| PaymentIntent | `6BreWVV8ihzF1wd2p3f4KNkJGMWXWmySfqz9wyNxbveN` | absent, as expected for ER-only permission | returned; private; exact members above |
+| PaymentReceipt | `8sdAQbjnZnbCfdpJfJVcxT7PrjfWWtDRq3TCp4a1LzMW` | absent, as expected for ER-only permission | returned; private; exact members above |
+| Destination recipient eATA | `A8kdUTXLB9mKrsvkNJAMsjMnfZJYJ2PaGXhHSP96j4FK` | returned | returned; byte-equivalent decoded members/flags |
+
+No inaccessible individual account or stale base/PER permission was found. Company already has destination-eATA visibility from the previously finalized configuration; no additional access was granted during this diagnosis.
+
+## Execution result and blocker
+
+The exact valid `execute_private_payment` transaction was simulated through the real PER with signature verification and without requesting returned account snapshots. PER returned HTTP 403 `Access denied` before SVM execution:
+
+- isolated program invocation: absent
+- SPL Token CPI invocation/success: absent
+- isolated program success: absent
+- `err: null`: absent
+- payment signature: none
+- persistent payment outflow: zero
+
+This does not count as a program simulation. Because every required account and permission succeeds individually, the remaining uncertainty is an undocumented transaction-level PER ingress or account-combination rule. The time-boxed diagnosis stopped without broadening permissions or submitting the payment.
+
+Current state remains:
+
+- custody: 20,000 USDC base units
+- recipient A: 0
+- PaymentIntent: APPROVED with two distinct approvals; not executed
+- PaymentReceipt: INITIALIZED; amount 0
+- successful payment executions: 0
+- private USDC outflow: 0
+
+The final replay/changed-amount/wrong-recipient-or-destination/insufficient-approval simulations and post-payment access matrix cannot be truthfully completed until a valid transaction reaches SVM. No mainnet action occurred.

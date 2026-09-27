@@ -5,7 +5,11 @@ import { test } from "node:test";
 import * as mb from "@magicblock-labs/ephemeral-rollups-sdk";
 import { Connection, Keypair } from "@solana/web3.js";
 
-import { buildInstructionPlan } from "../src/client.mjs";
+import {
+  buildInstructionPlan,
+  decodePrivatePermission,
+  identityRoleForSigner,
+} from "../src/client.mjs";
 import {
   DEVNET_USDC_MINT,
   EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
@@ -60,6 +64,59 @@ function group(plan, name) {
   return result;
 }
 
+test("permission decoder supports ephemeral and standard PER layouts", () => {
+  const permissioned = Keypair.generate().publicKey;
+  const defaultMember = Keypair.generate().publicKey;
+  const viewer = Keypair.generate().publicKey;
+  const expectedMembers = [
+    { flags: 0, pubkey: defaultMember.toBase58() },
+    { flags: 14, pubkey: viewer.toBase58() },
+  ];
+  const writeMember = (buffer, offset, member) => {
+    buffer[offset] = member.flags;
+    member.pubkey.toBuffer().copy(buffer, offset + 1);
+  };
+
+  const ephemeral = Buffer.alloc(35 + expectedMembers.length * 33);
+  permissioned.toBuffer().copy(ephemeral, 2);
+  ephemeral[34] = 1;
+  writeMember(ephemeral, 35, { flags: 0, pubkey: defaultMember });
+  writeMember(ephemeral, 68, { flags: 14, pubkey: viewer });
+  assert.deepEqual(decodePrivatePermission(ephemeral), {
+    permissionedAccount: permissioned.toBase58(),
+    isPrivate: true,
+    layout: "ephemeral",
+    members: expectedMembers,
+  });
+
+  const standard = Buffer.alloc(567);
+  permissioned.toBuffer().copy(standard, 2);
+  standard[34] = 1;
+  standard.writeUInt32LE(expectedMembers.length, 35);
+  writeMember(standard, 39, { flags: 0, pubkey: defaultMember });
+  writeMember(standard, 72, { flags: 14, pubkey: viewer });
+  assert.deepEqual(decodePrivatePermission(standard), {
+    permissionedAccount: permissioned.toBase58(),
+    isPrivate: true,
+    layout: "standard",
+    members: expectedMembers,
+  });
+});
+
+test("identity roles match reconstructed signers by public key", () => {
+  const original = Keypair.generate();
+  const reconstructed = Keypair.fromSecretKey(original.secretKey);
+  assert.notEqual(original, reconstructed);
+  assert.equal(
+    identityRoleForSigner({ recipientA: original }, reconstructed),
+    "recipientA",
+  );
+  assert.equal(
+    identityRoleForSigner({ recipientA: original }, Keypair.generate()),
+    null,
+  );
+});
+
 test("client builds the exact single-instruction atomic execution boundary", async () => {
   const plan = await buildInstructionPlan(
     stateFixture(),
@@ -96,6 +153,17 @@ test("recipient self-onboarding installs only company and recipient authorities"
     stateFixture(),
     new Connection("http://127.0.0.1:8899", "confirmed"),
   );
+  const tokenView = group(plan, "base.initializeRecipientTokenView");
+  assert.deepEqual(tokenView.signers, ["recipientA"]);
+  assert.equal(tokenView.instructions.length, 1);
+  assert.equal(
+    tokenView.instructions[0].programId.toBase58(),
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+  );
+  assert.equal(
+    tokenView.instructions[0].keys[1].pubkey.toBase58(),
+    plan.context.accounts.destinationTokenAccount.toBase58(),
+  );
   const setup = group(plan, "base.setupRecipientEata");
   assert.deepEqual(setup.signers, ["recipientA"]);
   assert.equal(setup.instructions.length, 4);
@@ -119,6 +187,55 @@ test("recipient self-onboarding installs only company and recipient authorities"
   assert.equal(
     setup.instructions[0].keys[1].pubkey.toBase58(),
     plan.context.recipient.publicKey.toBase58(),
+  );
+});
+
+test("custody repair restores only PDA authority after company visibility", async () => {
+  const plan = await buildInstructionPlan(
+    stateFixture(),
+    new Connection("http://127.0.0.1:8899", "confirmed"),
+  );
+  const repair = group(plan, "base.repairCustodyPdaAuthority");
+  assert.deepEqual(repair.signers, ["company"]);
+  assert.equal(repair.instructions.length, 1);
+  assert.equal(
+    repair.instructions[0].programId.toBase58(),
+    PERMISSION_PROGRAM_ID.toBase58(),
+  );
+  const members = mb.deserializeMembersArgs(repair.instructions[0].data, 8).members;
+  assert.equal(members.length, 2);
+  assert.equal(
+    members[0].pubkey.toBase58(),
+    plan.context.identities.company.publicKey.toBase58(),
+  );
+  assert.equal(members[0].flags, 15);
+  assert.equal(
+    members[1].pubkey.toBase58(),
+    plan.context.accounts.vault.toBase58(),
+  );
+  assert.equal(members[1].flags, mb.AUTHORITY_FLAG);
+});
+
+test("recipient repair preserves viewers and grants only PDA authority", async () => {
+  const plan = await buildInstructionPlan(
+    stateFixture(),
+    new Connection("http://127.0.0.1:8899", "confirmed"),
+  );
+  const repair = group(plan, "base.repairRecipientPdaAuthority");
+  assert.deepEqual(repair.signers, ["company"]);
+  assert.equal(repair.instructions.length, 1);
+  assert.equal(
+    repair.instructions[0].programId.toBase58(),
+    PERMISSION_PROGRAM_ID.toBase58(),
+  );
+  const members = mb.deserializeMembersArgs(repair.instructions[0].data, 8).members;
+  assert.deepEqual(
+    members.map((member) => [member.pubkey.toBase58(), member.flags]),
+    [
+      [plan.context.identities.company.publicKey.toBase58(), 15],
+      [plan.context.recipient.publicKey.toBase58(), 15],
+      [plan.context.accounts.vault.toBase58(), mb.AUTHORITY_FLAG],
+    ],
   );
 });
 

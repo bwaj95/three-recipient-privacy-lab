@@ -31,7 +31,9 @@ import {
   PER_RPC,
   buildInstructionPlan,
   connection,
+  decodePrivatePermission,
   deriveContext,
+  identityRoleForSigner,
   keypairsFromState,
   loadLocalState,
   readIdl,
@@ -70,10 +72,15 @@ const sleep = (milliseconds) =>
 
 if (
   !process.env.SOLANA_DEVNET_RPC_URL ||
+  !process.env.PDA_CUSTODY_STATE_PATH ||
+  path.basename(process.env.PDA_CUSTODY_STATE_PATH) !==
+    "pda-custody-live-20260927.json" ||
   BASE_RPC !== process.env.SOLANA_DEVNET_RPC_URL ||
   PER_RPC !== "https://devnet-tee.magicblock.app"
 ) {
-  throw new Error("Refusing endpoints outside the fixed Solana-devnet/PER boundary.");
+  throw new Error(
+    "Refusing endpoints or fixture outside the fixed live devnet experiment boundary.",
+  );
 }
 
 const command = process.argv[2] || "inspect";
@@ -83,11 +90,12 @@ if (![
   "setup-a",
   "pay-a",
   "audit",
+  "probe-access",
   "reconcile",
   "all",
 ].includes(command)) {
   throw new Error(
-    "Usage: inspect | fund | setup-a | pay-a | audit | reconcile | all",
+    "Usage: inspect | fund | setup-a | pay-a | audit | probe-access | reconcile | all",
   );
 }
 
@@ -290,7 +298,7 @@ async function sendOnce(
       endpoint: endpointKind,
       semanticAction,
       signerRoles: signers.map((signer) =>
-        Object.entries(identities).find(([, value]) => value === signer)?.[0] ||
+        identityRoleForSigner(identities, signer) ||
         (signer.publicKey.equals(loadDeployer().publicKey) ? "deployer" : "unknown"),
       ),
       preparedAt: new Date().toISOString(),
@@ -397,14 +405,6 @@ async function simulate(
       sigVerify: true,
       commitment: "confirmed",
       innerInstructions: true,
-      ...(watched.length
-        ? {
-            accounts: {
-              encoding: "base64",
-              addresses: watched.map((address) => address.toBase58()),
-            },
-          }
-        : {}),
     });
     result = response.value;
   } catch (error) {
@@ -444,7 +444,7 @@ async function simulate(
     throw new Error(`${label} had the opposite result from the expected simulation.`);
   }
   console.log(`${label}: observed expected ${observation.observed}`);
-  return { observation, simulatedAccounts: result?.accounts ?? null };
+  return { observation };
 }
 
 function planGroup(plan, name) {
@@ -650,6 +650,49 @@ async function setupPayment(label) {
     }
   }
 
+  const custodyPermissionInfo = await base.getAccountInfo(
+    accounts.custodyEataPermission,
+    "confirmed",
+  );
+  if (!custodyPermissionInfo?.owner.equals(PERMISSION_PROGRAM_ID)) {
+    throw new Error("Custody eATA permission is unavailable on the base layer.");
+  }
+  const custodyPermission = decodePrivatePermission(custodyPermissionInfo.data);
+  const custodyPdaHasAuthority = custodyPermission.members.some(
+    (member) =>
+      member.pubkey === accounts.vault.toBase58() &&
+      (member.flags & mb.AUTHORITY_FLAG) !== 0,
+  );
+  if (!custodyPdaHasAuthority) {
+    const group = planGroup(plan, "base.repairCustodyPdaAuthority");
+    await sendOnce(
+      "setup.repair-custody-pda-authority",
+      "base",
+      base,
+      group.instructions,
+      [identities.company],
+      "Restore least-privilege AUTHORITY for the custody eATA owner PDA",
+    );
+  }
+
+  const recipientTokenViewInfo = await base.getAccountInfo(
+    accounts.destinationTokenAccount,
+    "confirmed",
+  );
+  if (!recipientTokenViewInfo) {
+    const group = planGroup(plan, "base.initializeRecipientTokenView");
+    await sendOnce(
+      `setup.${label}.initialize-recipient-token-view`,
+      "base",
+      base,
+      group.instructions,
+      [context.recipient],
+      `${context.recipientRole} initializes only its canonical Circle-USDC token view`,
+    );
+  } else if (!recipientTokenViewInfo.owner.equals(TOKEN_PROGRAM_ID)) {
+    throw new Error(`${context.recipientRole} token view has an unexpected owner.`);
+  }
+
   const recipientInfo = await base.getAccountInfo(accounts.destinationEata, "confirmed");
   if (!recipientInfo) {
     const group = planGroup(plan, "base.setupRecipientEata");
@@ -663,6 +706,32 @@ async function setupPayment(label) {
     );
   } else if (!recipientInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
     throw new Error(`${context.recipientRole} eATA exists with an unexpected owner.`);
+  }
+
+  const recipientPermissionAddress = derivePermission(accounts.destinationEata);
+  const recipientPermissionInfo = await base.getAccountInfo(
+    recipientPermissionAddress,
+    "confirmed",
+  );
+  if (!recipientPermissionInfo?.owner.equals(PERMISSION_PROGRAM_ID)) {
+    throw new Error(`${context.recipientRole} eATA permission is unavailable on base.`);
+  }
+  const recipientPermission = decodePrivatePermission(recipientPermissionInfo.data);
+  const recipientPdaHasAuthority = recipientPermission.members.some(
+    (member) =>
+      member.pubkey === accounts.vault.toBase58() &&
+      (member.flags & mb.AUTHORITY_FLAG) !== 0,
+  );
+  if (!recipientPdaHasAuthority) {
+    const group = planGroup(plan, "base.repairRecipientPdaAuthority");
+    await sendOnce(
+      `setup.${label}.repair-recipient-pda-authority`,
+      "base",
+      base,
+      group.instructions,
+      [identities.company],
+      `Grant least-privilege AUTHORITY to the custody PDA for recipient ${label}`,
+    );
   }
 
   if (!(await base.getAccountInfo(accounts.intent, "confirmed"))) {
@@ -714,7 +783,9 @@ async function setupPayment(label) {
     }
   }
 
+  console.log(`setup.${label}: base state finalized; authenticating company on PER`);
   const per = await authenticatedPer("company");
+  console.log(`setup.${label}: PER authentication succeeded; checking delegation propagation`);
   for (const [address, name] of [
     [accounts.vault, "vault"],
     [accounts.sourceTokenAccount, "custody token view"],
@@ -727,9 +798,11 @@ async function setupPayment(label) {
       : address.equals(accounts.destinationTokenAccount)
         ? accounts.destinationEata
         : address;
+    console.log(`setup.${label}: checking ${name}`);
     await verifyDelegation(delegationAddress, name);
     await waitForAccount(per, address, name);
   }
+  console.log(`setup.${label}: delegated accounts are readable; building PER configuration`);
   const perPlan = await buildInstructionPlan(state, per, label);
   if (label === "A") {
     const group = planGroup(perPlan, "per.configureVaultPrivateAccess");
@@ -836,11 +909,13 @@ async function runNegativeSimulationsBeforeExecution(label, per) {
     ["recipient-cannot-approve", context.recipient],
     ["outsider-cannot-approve", identities.outsider],
   ]) {
+    const signerRole = identityRoleForSigner(identities, signer);
+    if (!signerRole) {
+      throw new Error(`${name} signer does not match an isolated identity.`);
+    }
     await simulate(
       `negative.${label}.${name}`,
-      await authenticatedPer(
-        Object.entries(identities).find(([, value]) => value === signer)[0],
-      ),
+      await authenticatedPer(signerRole),
       [await approvalInstruction(label, signer)],
       [signer],
       { expectSuccess: false, watched, watchRpc: per },
@@ -1092,24 +1167,6 @@ async function pay(label) {
   );
 }
 
-function decodePermission(data) {
-  if (data.length < 35 || (data.length - 35) % 33 !== 0) {
-    throw new Error(`Unexpected permission data length ${data.length}.`);
-  }
-  const members = [];
-  for (let offset = 35; offset < data.length; offset += 33) {
-    members.push({
-      flags: data[offset],
-      pubkey: new PublicKey(data.subarray(offset + 1, offset + 33)).toBase58(),
-    });
-  }
-  return {
-    permissionedAccount: new PublicKey(data.subarray(2, 34)).toBase58(),
-    isPrivate: data[34] === 1,
-    members,
-  };
-}
-
 async function rawAccountProbe(endpoint, address, decoderName = null) {
   let response;
   let body;
@@ -1171,6 +1228,106 @@ async function reliableAccountProbe(endpoint, address, decoderName = null) {
     throw new Error("Two account probes failed without an HTTP response; privacy is inconclusive.");
   }
   return { ...second, attempts: 2 };
+}
+
+async function permissionProbe(endpoint, address) {
+  const result = await reliableAccountProbe(endpoint, address);
+  let permission = null;
+  if (result.returned) {
+    const rpc = connection(endpoint);
+    const info = await rpc.getAccountInfo(address, "confirmed");
+    if (info?.owner.equals(PERMISSION_PROGRAM_ID)) {
+      const decoded = decodePrivatePermission(info.data);
+      permission = {
+        permissionedAccount: decoded.permissionedAccount,
+        isPrivate: decoded.isPrivate,
+        members: decoded.members,
+      };
+    }
+  }
+  return {
+    returned: result.returned,
+    owner: result.owner,
+    httpStatus: result.httpStatus,
+    permission,
+  };
+}
+
+async function probeAccess() {
+  await verifyNetwork("per");
+  await authenticatedPer("company");
+  const context = deriveContext(state, "A");
+  const { accounts } = context;
+  const endpoint = authUrls.get("company");
+  const permissionAddresses = {
+    vault: accounts.vaultPermission,
+    sourceCustodyEata: accounts.custodyEataPermission,
+    paymentIntent: accounts.intentPermission,
+    paymentReceipt: accounts.receiptPermission,
+    destinationRecipientEata: derivePermission(accounts.destinationEata),
+  };
+  const permissionComparisons = {};
+  for (const [role, address] of Object.entries(permissionAddresses)) {
+    const [baseResult, perResult] = await Promise.all([
+      permissionProbe(BASE_RPC, address),
+      permissionProbe(endpoint, address),
+    ]);
+    permissionComparisons[role] = {
+      address: address.toBase58(),
+      base: {
+        returned: baseResult.returned,
+        owner: baseResult.owner,
+        permission: baseResult.permission,
+      },
+      per: {
+        returned: perResult.returned,
+        owner: perResult.owner,
+        permission: perResult.permission,
+        requestReachedPer: perResult.httpStatus !== null,
+        filtered: perResult.httpStatus === 200 && !perResult.returned,
+      },
+    };
+  }
+
+  const required = [
+    ["CompanyVault", accounts.vault, "vault"],
+    ["source custody eATA", accounts.sourceEata, "sourceCustodyEata"],
+    ["source custody PER token view", accounts.sourceTokenAccount, "sourceCustodyEata"],
+    ["PaymentIntent", accounts.intent, "paymentIntent"],
+    ["PaymentReceipt", accounts.receipt, "paymentReceipt"],
+    ["destination recipient eATA", accounts.destinationEata, "destinationRecipientEata"],
+    ["destination recipient PER token view", accounts.destinationTokenAccount, "destinationRecipientEata"],
+  ];
+  const accountsReport = [];
+  for (const [role, address, permissionRole] of required) {
+    const result = await reliableAccountProbe(endpoint, address);
+    accountsReport.push({
+      address: address.toBase58(),
+      role,
+      returned: result.returned,
+      owner: result.owner,
+      permission: permissionComparisons[permissionRole],
+      requestReachedPer: result.httpStatus !== null,
+      filtered: result.httpStatus === 200 && !result.returned,
+    });
+  }
+
+  const firstInaccessible = accountsReport.find((entry) => !entry.returned) ?? null;
+  const report = {
+    accounts: accountsReport,
+    associatedPermissions: Object.entries(permissionComparisons).map(
+      ([role, comparison]) => ({ role, ...comparison }),
+    ),
+    firstInaccessible: firstInaccessible
+      ? { address: firstInaccessible.address, role: firstInaccessible.role }
+      : null,
+  };
+  state.observations.companyAccountProbe = {
+    ...report,
+    recordedAt: new Date().toISOString(),
+  };
+  save();
+  console.dir(report, { depth: null });
 }
 
 async function audit() {
@@ -1274,6 +1431,15 @@ async function audit() {
     "recipientA:destinationA",
     "company:custody",
   ]);
+  state.observations.accessControl = {
+    matrix,
+    permissions: null,
+    positiveControlsPassed: false,
+    unauthorizedControlsPassed: false,
+    incompleteReason: "Validating matched positive and negative controls",
+    recordedAt: new Date().toISOString(),
+  };
+  save();
   for (const row of matrix) {
     const key = `${row.authenticatedIdentity}:${row.account}`;
     if (expectedAllowed.has(key) && !row.returned) {
@@ -1310,27 +1476,36 @@ async function audit() {
     if (!info || !info.owner.equals(PERMISSION_PROGRAM_ID)) {
       throw new Error(`Missing permission ${name}.`);
     }
-    permissions[name] = decodePermission(info.data);
+    permissions[name] = decodePrivatePermission(info.data);
   }
   const exactMembers = {
     vault: [
+      [PROGRAM_ID.toBase58(), 0],
       [identities.company.publicKey.toBase58(), 15],
       [identities.accountant.publicKey.toBase58(), 14],
     ],
-    custodyEata: [[identities.company.publicKey.toBase58(), 15]],
+    custodyEata: [
+      [DELEGATION_PROGRAM_ID.toBase58(), 0],
+      [identities.company.publicKey.toBase58(), 15],
+      [a.accounts.vault.toBase58(), 1],
+    ],
     intentA: [
+      [PROGRAM_ID.toBase58(), 0],
       [identities.company.publicKey.toBase58(), 15],
       [identities.approverOne.publicKey.toBase58(), 15],
       [identities.approverTwo.publicKey.toBase58(), 15],
     ],
     receiptA: [
+      [PROGRAM_ID.toBase58(), 0],
       [identities.company.publicKey.toBase58(), 15],
       [identities.accountant.publicKey.toBase58(), 14],
       [identities.recipientA.publicKey.toBase58(), 14],
     ],
     recipientEataA: [
+      [DELEGATION_PROGRAM_ID.toBase58(), 0],
       [identities.company.publicKey.toBase58(), 15],
       [identities.recipientA.publicKey.toBase58(), 15],
+      [a.accounts.vault.toBase58(), 1],
     ],
   };
   const permissionedResources = {
@@ -1355,6 +1530,7 @@ async function audit() {
     permissions,
     positiveControlsPassed: true,
     unauthorizedControlsPassed: true,
+    incompleteReason: null,
     recordedAt: new Date().toISOString(),
   };
   save();
@@ -1430,6 +1606,7 @@ try {
   if (command === "setup-a") await setupPayment("A");
   if (command === "pay-a") await pay("A");
   if (command === "audit") await audit();
+  if (command === "probe-access") await probeAccess();
   if (command === "reconcile") await reconcile();
   if (command === "all") await all();
 } catch (error) {

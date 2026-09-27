@@ -567,3 +567,216 @@
   - A human must rotate the transiently exposed Alchemy credential and complete Circle's reCAPTCHA-protected Solana-devnet faucet request to deployer `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`. CAPTCHA bypass/automation is not allowed.
 - Exact next step:
   - After the rotated RPC environment is installed and faucet funding arrives, reverify devnet genesis plus the exact Circle mint/ATA and balance, rerun `fund` to transfer only 20,000 base units to the isolated company, reconcile that signature, then continue simulation-first vault setup/delegation/PER execution.
+
+### 2026-09-27 — Circle USDC funding finalized and reconciled
+
+- Files inspected:
+  - Rotated-RPC presence only, devnet genesis, deployer/company Circle-USDC balances, saved fixture transaction records, current branch/HEAD, and tracked cleanliness.
+- Evidence:
+  - Both trusted RPC environment variables are set; their values were not emitted. Base RPC genesis is exactly `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`.
+  - Before funding, deployer held 20 Circle devnet USDC. Transaction `569treCJgDmWXt8DAaxs4dWcnJgBs2h1iqn73cdfAFmnJba9yJmQwWMiiwN8GXvR6gRR86QnRKGotpzcEWtHE3hB` finalized successfully after simulation.
+  - Isolated company now holds exactly 0.02 Circle devnet USDC; deployer holds 19.98. The experiment funding cap was not exceeded.
+  - Both saved funding signatures reconcile as finalized success; no ambiguous transaction remains.
+- Commands run:
+  - Presence-only environment checks; trusted-RPC genesis and `spl-token balance`; live `fund`; live `reconcile`; current branch/HEAD/status checks.
+- Changes made:
+  - Persisted the signed funding transaction and reconciliation in the ignored fixture; added this public-safe status milestone. No credential value or key material was recorded.
+- Tests/simulations:
+  - The Circle-USDC funding transaction simulated successfully before its single submission. Finalized balances match the intended 20,000-base-unit transfer exactly.
+- Current blocker:
+  - None. Vault/state/eATA accounts are not initialized yet.
+- Exact next step:
+  - Run `setup-a`; allow its simulation-first, one-at-a-time base initialization/delegation and PER permission/configuration steps, stopping immediately on any failed or ambiguous saved signature.
+
+### 2026-09-27 — Base setup and delegation finalized; PER phase not entered
+
+- Files inspected:
+  - Saved public transaction metadata/outcomes, base setup/delegation control flow, PER authentication/propagation boundary, and current fixture state.
+- Evidence:
+  - Eight setup actions are finalized successes: initialize vault/deposit, configure custody access, delegate custody eATA, recipient self-onboarding/delegation, initialize intent/receipt shells, and delegate vault/intent/receipt.
+  - Signatures: `5M2BKzFeGaAcSDi5joNdkMwZkGhSnniaHvRnT1xHfn6wQ8ySqGDpcWj8D4RT5HzGrJzDx3Gagk7MvH6ZbiPyfT9Z`, `5vtKFwZXD5eT8nyGW4neQXawqxDiTpGoTNVQeEyU7GSXkV7gTxjfvbcPWSBbut56p8achamTE9QS7DJAfioH4jH5`, `4HDi6nPBmDn972FDYErsbQw2BRfFJSxC351Y5MTdiT5DTdqytHn7MoNZcdNSaQNDT6LzB4tYHtQKc2txzS8NQh2k`, `4tvW3HkES3gWZpeE57J7dFFV8kUXWmvNeEA5sw21ArEmqnrb53Ag9wLpUaWrASCjgpHcuZD78JbZfsATLHWDW85x`, `3WyseMBCCdrAN9yYBPASDxsd7QWNWBb85EPqFafCKWwzqGXgAHRKdSjofa4WWYLno4u6MooxeH3n2ARGQkajs3R7`, `5UByT5EcBAX6xat7oUiurchQCmVQsmrqZAWsAmo29CDhbKqic26X7d8BcR8nEKg3Uf4tVqZTfd1Sigh3MAG5rsC2`, `5TmN7XdgkR81mrGs3r8KdwqmK6CHV2YSrmB3nyULNVSVJHMyCRV5BLn5ozQspv4ML3XQp8n7Ksm1d6Ni6DoAkZge`, and `3ANXgF3h4xpyiRBtqKuWe9byJ5bXDLbrSNgKHubGMqnQ1kGGSU3uWEA35EKhkMi6h7KnprjzNkW2ndvvfKYoy9Qo` plus the already recorded funding signatures.
+  - Rerunning setup after reconciliation performed no duplicate base write. It exited before creating any PER permission/configuration transaction record and emitted no error, so there is no ambiguous PER signature.
+- Commands run:
+  - Live `setup-a`; live `reconcile`; public transaction-metadata inspection; setup/propagation source review.
+- Changes made:
+  - Added this public-safe status milestone. No program upgrade/close/undelegation occurred.
+- Tests/simulations:
+  - Every submitted base transaction was simulated before submission and reconciles finalized success. PER permission setup remains untested live.
+- Current blocker:
+  - The live runner exits silently at or before PER authentication/delegation propagation, without creating a transaction record.
+- Exact next step:
+  - Add non-sensitive phase markers around PER authentication, delegation-record checks, and account propagation; rerun the idempotent setup to identify the exact failing await before any PER write.
+
+### 2026-09-27 — Missing recipient token view isolated and repaired client-side
+
+- Files inspected:
+  - Base/authenticated-PER/unauthenticated-PER owner/data visibility for vault, custody/recipient eATAs and token views, intent, and receipt; all five delegation records; pinned SDK ephemeral-destination builder; official Smart Contract Integration guide.
+- Evidence:
+  - Vault, custody eATA, recipient eATA, intent, and receipt are delegated to the pinned TEE. Their base owners are the Delegation Program and their authenticated-PER owners are the expected original programs.
+  - Custody eATA/token view are hidden from unauthenticated PER reads. Recipient eATA is likewise hidden, but recipient canonical token view is absent on both base and PER.
+  - The pinned SDK's ephemeral-destination flow creates the ordinary recipient ATA before `initEphemeralAtaIx`, eATA permission creation, and eATA delegation. Our self-onboarding omitted exactly that ATA creation.
+- Commands run:
+  - Bounded phase-marked `setup-a`; read-only cross-layer account/delegation diagnostic; installed SDK source search; current official guide review.
+- Changes made:
+  - Added a recipient-signed, idempotent associated-token-account instruction group and made live setup create/validate that token view before eATA onboarding. Added an exact client test for the ATA program/address. No deployed Rust program change is required.
+- Tests/simulations:
+  - No transaction was submitted during diagnosis. The failed wait ended before building any PER transaction.
+- Current blocker:
+  - The client repair must pass syntax/unit tests; then the missing ATA must be simulated/submitted once and PER materialization rechecked.
+- Exact next step:
+  - Run JavaScript tests; resume idempotent `setup-a` so it submits only the new recipient-ATA transaction, reconciles it, verifies PER propagation, and then creates the ER-local permissions/configuration.
+
+### 2026-09-27 — Recipient token-view repair validated; saved history reconciled
+
+- Files inspected:
+  - Current experiment branch/diff, live runner transaction guard and reconciliation path, ignored fixture transaction labels, recipient-token-view repair, unit test, and public evidence/status files.
+- Evidence:
+  - Both trusted RPC environment variables are present. Their values are not recorded. The base endpoint returned the exact required devnet genesis `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`; the default signer is the expected deployer `4k5kaSZ796EWM8hNfXuhcdVbZ2MNWonTbRmsshWDBX7b`; its Circle devnet USDC balance is 19.98.
+  - Every saved funding/setup signature reconciles as finalized success. The fixture has no recipient-token-view, PER-configuration, approval, or payment signature, so there is no unknown transaction to retry.
+  - The repair uses the Associated Token Program's idempotent instruction, is signed by recipient A, and targets the exact canonical Circle-USDC token-view address already bound into the payment.
+- Commands run:
+  - Presence-only environment checks; guarded devnet genesis, signer, and Circle-USDC balance queries; live `reconcile`; `npm run check`; `npm test`; targeted diff/source review.
+- Changes made:
+  - Preserved pre-edit backups of this status and the live evidence file. No blockchain write occurred during this milestone.
+- Tests/simulations:
+  - JavaScript syntax checks passed. JavaScript tests: 26 passed, 0 failed. Reconciliation was read-only and found ten finalized-success transactions, zero failures, and zero unknown outcomes.
+- Current blocker:
+  - None. Recipient A's canonical token-view account remains absent and is the next deliberately authorized base-layer write.
+- Exact next step:
+  - Run idempotent `setup-a`; allow only the missing recipient token-view initialization followed by PER propagation checks and the three permission/payment-configuration transactions, each simulated, saved before submission, submitted once, and reconciled.
+
+### 2026-09-27 — Recipient token view and private payment configuration finalized
+
+- Files inspected:
+  - Live setup control flow, exact repaired ATA instruction group, authenticated PER propagation checks, and saved transaction outcomes.
+- Evidence:
+  - Recipient A's canonical Circle-USDC token view was initialized once on base with signature `4qaJmxdd4NzFLq5vqfymuePeA6JQAF5Asay4XgCJWJm62WRgKLsasY24FWfyf6JzxmNRsUzsJkw8zkwzuUHTg4KD`.
+  - Authenticated PER then returned the vault, custody token view, recipient token view, intent, and receipt after their pinned-validator delegation checks passed.
+  - Vault private access finalized with `4k5KFg612q2BrRrtpqWVe5ALB5E9k7MHm7Ks8aaDeF25Z1nhRx6B7nB3Je1Qk6Zgy1GK2c5Utbh8qefV7iXNgA2V`; payment-A intent/receipt permissions finalized with `4A5nQnthUqwWTpE2M26HA4ER3CHSoywLhPEKZpQCQ3sbhqTcy6rduspheNScJwXoojy4MQ9TXsWbWoeZkfUskAzZ`; exact payment binding finalized with `65X77KyYEJj8G4kLu9PaLqFUzBPA4jioHrispRsrr9bWPoFh1thniEoo2QgE1c7WXq9upGt5nMR4HRVb7ZwKuu46`.
+- Commands run:
+  - Live `setup-a` through the environment-provided Solana devnet RPC and fixed PER endpoint.
+- Changes made:
+  - Added four signed transaction records to the ignored fixture and this public-safe milestone. No deployed program or prior experiment was modified.
+- Tests/simulations:
+  - Each of the four transactions passed network/mint/TEE guards and simulation before its single submission. The runner observed finalized success for each.
+- Current blocker:
+  - None, pending independent read-only reconciliation of the four new signatures.
+- Exact next step:
+  - Reconcile all saved signatures; decode the configured state/permissions without exposing credentials; then run the approval and payment workflow only if every new result remains successful.
+
+### 2026-09-27 — Mixed PER permission layouts decoded from pinned source
+
+- Files inspected:
+  - `ephemeral-rollups-sdk` 0.16.2 `EphemeralPermission`, `Permission`, `Member`, and flag definitions; all five live permission accounts; audit decoder and expected member lists.
+- Evidence:
+  - The read-only pre-payment access audit stopped before any write because the legacy decoder handled only the compact ephemeral layout. Program-created permissions use compact `[header][Member...]`; eSPL-created permissions use Borsh `Option<Vec<Member>>` plus zero allocation padding.
+  - Live permission reads confirmed exact private sets. Program and eSPL default members have flags `0` and therefore no authority/log/balance/message access. Company has `15`; accountant and recipient receipt viewers have `14` (view only); approvers appear only on the intent with `15`.
+- Commands run:
+  - Read-only live `audit`; pinned Cargo-registry source inspection; authenticated public-key/flag-only permission diagnostics; `npm run check`; `npm test`; `git diff --check`.
+- Changes made:
+  - Added a bounded decoder for both official layouts, included zero-flag default members in exact-set assertions, and added a unit test covering both encodings. Pre-edit source/test/runner backups were preserved.
+- Tests/simulations:
+  - First new unit run exposed a missing `PublicKey` import; after the one-line correction, JavaScript tests pass 27/27, syntax checks pass, and whitespace checks pass. The failed audit and diagnostic were read-only; no approval or payment transaction was constructed.
+- Current blocker:
+  - None. The corrected read-only access matrix must pass before approval one is submitted.
+- Exact next step:
+  - Rerun `audit`; if every authorized positive control and unauthorized matched control passes, record the exact permission matrix and proceed to payment A's simulation-first approval workflow.
+
+### 2026-09-27 — Pre-payment privacy matrix passes; transient fetch failure reconciled
+
+- Files inspected:
+  - Saved access-control observation, exact permission membership/flags, saved transaction ledger, current PER status/identity, and current private balances/intent/receipt state.
+- Evidence:
+  - Corrected `audit` passed: all required authorized reads returned and decoded; matched unauthorized, outsider, unrelated-recipient, and unauthenticated PER reads returned no account. The public base RPC exposes only the delegated sparse receipt shell, not private paid data.
+  - The first `pay-a` process returned `fetch failed` before creating any new transaction record. MagicBlock's live devnet TEE ER status was operational and `getIdentity` returned the pinned validator.
+  - Independent authenticated reconciliation found custody `20,000`, destination `0`, approval count `0`, intent unexecuted/status `0`, receipt INITIALIZED/status `0`, amount `0`. No approval or payment landed and no signature is unknown.
+- Commands run:
+  - Corrected live `audit`; public-safe matrix extraction; first live `pay-a`; saved-ledger inspection; MagicBlock status API and TEE identity probes; authenticated state/balance reconciliation.
+- Changes made:
+  - Persisted the successful read-only audit observation in the ignored fixture and added this milestone. No blockchain state changed during the failed payment attempt.
+- Tests/simulations:
+  - Privacy matrix positive/negative controls passed. The payment workflow stopped before its first transaction and therefore performed no approval/payment simulation or submission.
+- Current blocker:
+  - None. The failure is reconciled as pre-transaction and current PER health/identity are correct.
+- Exact next step:
+  - Retry `pay-a` once from the verified zero-approval state; stop on any saved ambiguous signature or failed simulation.
+
+### 2026-09-27 — Approval one finalized; recipient negative-test harness repaired
+
+- Files inspected:
+  - Payment-A transaction record/state, approver-negative-test loop, signer-role recording, and `deriveContext` keypair reconstruction.
+- Evidence:
+  - Approval one finalized exactly once with signature `5yAJWmMzsV42cfbRrJQtfC1PfidgNrTPD2DwQ6Ac93eVB6FEtCRnWLiRDDhP5QYAsQr7HzY4wfTEFtfp4xpdhdyc`.
+  - Duplicate-approver and accountant-cannot-approve simulations failed as intended. The process then stopped locally because recipient A's reconstructed `Keypair` was compared by object identity rather than public key; approval two and payment execution were never prepared.
+  - Full reconciliation reports approval one and all prior signatures finalized success, with no unknown outcome.
+- Commands run:
+  - Second live `pay-a`; keypair reconstruction/source inspection; `npm run check`; `npm test`; `git diff --check`; live `reconcile`.
+- Changes made:
+  - Added a tested public-key-based identity-role helper and used it for signer recording and negative-test authentication. Pre-edit backups were preserved.
+- Tests/simulations:
+  - JavaScript tests pass 28/28; syntax and whitespace checks pass. Two expected-failure live simulations ran without persistent state change.
+- Current blocker:
+  - None. Payment A is deliberately paused at exactly one finalized approval.
+- Exact next step:
+  - Resume `pay-a`; it must reuse approval one, complete all required negative simulations, submit approval two once, run binding/bypass simulations and the successful non-persistent execution simulation, then submit at most one 10,000-base-unit execution.
+
+### 2026-09-27 — Valid CPI isolated to missing custody-PDA permission authority
+
+- Files inspected:
+  - Saved valid/negative simulation observations, current eATA permissions, official Smart Contract Integration guide, pinned eSPL `CreateEphemeralAtaPermission`/reset processors, base/PER permission-update behavior, and client setup plan.
+- Evidence:
+  - Approval two finalized once with signature `HBLnf1gavgZPVeKfGt2QKcb8jD7oUeVyhyYaejMkrsNvgg9Lip4geWpVCFnSWTVRR8Rc6QtC8f35uDAbfioac9b`; all 16 live signatures reconcile finalized success.
+  - Duplicate/unknown-role approval, one-approval execution, wrong payment ID/recipient/destination/amount/mint/revision/hash, and direct company-wallet custody-transfer simulations all failed while preserving state.
+  - The otherwise-valid execution simulation returned PER HTTP 403 before SVM logs and no payment transaction record was created.
+  - Official documentation requires the custody PDA to sign the token CPI. Pinned eSPL source creates an eATA permission with its owner as `AUTHORITY`; our company-only update removed that custody-PDA entry. A PER-local standard-permission update reaches the Permission Program but is rejected afterward as `InvalidWritableAccount`; the identical update simulates successfully on base with 2,481 CU and unchanged persistent state.
+- Commands run:
+  - Resumed live `pay-a`; live `reconcile`; official documentation/source review; three compound permission-isolation simulations; isolated PER permission-update simulation; isolated base permission-update simulation; `npm run check`; `npm test`; `git diff --check`.
+- Changes made:
+  - Added a base-layer, company-authorized permission repair that preserves company flags `15` and restores only `AUTHORITY` flag `1` to the custody owner PDA. The runner detects the exact missing member before submitting; audit expectations and unit tests were updated. Pre-edit backups were preserved.
+- Tests/simulations:
+  - JavaScript tests pass 29/29; syntax and whitespace checks pass. All diagnosis transactions were simulation-only and persistent fingerprints remained unchanged. No token transfer or receipt mutation occurred.
+- Current blocker:
+  - The tested base permission repair is not yet submitted. The valid execution remains blocked by the old permission snapshot.
+- Exact next step:
+  - Run idempotent `setup-a` so only `setup.repair-custody-pda-authority` is simulated/submitted once; reconcile it, confirm the exact permission set propagated to PER, then rerun only the valid execution simulation before any payment submission.
+
+### 2026-09-27 — Source authority repaired; destination authority isolated
+
+- Files inspected:
+  - Repaired base/PER custody permission, valid execution simulation result, destination permission members, base update behavior, and client permission-plan/audit assertions.
+- Evidence:
+  - Custody permission repair `2Buc1NDoC4awDX6TiAuLAPp7zwTtDLDG9pTafuDVYMd8cpLutNnnAsxYKQoNqPepo4mrAyz5AR6VkqBamHDz1oGS` finalized and reconciled. Base and PER both show company flags `15` and custody PDA flags `1`.
+  - The unchanged valid execution still returns HTTP 403, proving source authority alone is insufficient and no payment was submitted.
+  - A base-layer simulation that preserves company/recipient flags `15` and adds the custody PDA with authority-only flag `1` to recipient A's eATA permission succeeds with 2,592 CU and no persistent change.
+- Commands run:
+  - Live `setup-a`; live `reconcile`; authenticated base/PER permission comparison; standalone valid execution simulation; destination-permission base simulation; `npm run check`; `npm test`; `git diff --check`.
+- Changes made:
+  - Added a guarded per-recipient permission repair group and setup step; updated exact permission expectations for the post-delegation base update and added a unit test. Pre-edit backups were preserved.
+- Tests/simulations:
+  - JavaScript tests pass 30/30; syntax and whitespace checks pass. No token movement occurred; source remains 20,000 and destination remains 0.
+- Current blocker:
+  - The simulated destination permission repair is not yet submitted; valid CPI remains 403 under the old destination permission.
+- Exact next step:
+  - Run idempotent `setup-a` so only payment A's recipient-PDA authority repair is submitted once; reconcile/verify both layers, then rerun the valid execution simulation.
+
+### 2026-09-27 — Final account-by-account PER diagnosis time-boxed
+
+- Files inspected:
+  - The authoritative ignored fixture `.lab/pda-custody-live-20260927.json`, all saved public transaction outcomes, the live runner's simulation options, the five associated permission accounts, and the required vault/eATA/token-view/intent/receipt accounts.
+- Evidence:
+  - Destination authority repair `iyJBDBgDWYG7LLKXc6drTeKT4gyVgWhJU5gTxo1UNRQg8JJsqMffs7RrjTU8Y8mdUYX2m7zcVJvJzockQGyKyFC` is finalized success. All 18 saved writes are finalized successes; there is no unknown transaction and no `payment.A.execute` record.
+  - A first diagnostic accidentally used the older default fixture because `PDA_CUSTODY_STATE_PATH` was absent. Its addresses did not match the reconciled experiment and its read-only result was discarded. No transaction was prepared or submitted. The live runner now refuses to start unless the authoritative fixture is explicitly selected.
+  - With the authoritative fixture, the authenticated company received every required account from PER: CompanyVault `GhjDy7sMFCfzt4EnrXNHv39y8yDCaeEXo7VfuTd7yE1M`, source eATA `DF8HFeS1wqKefrQMv2mxkZHLJTYhAo3vzdRDq2Yc62wk`, source token view `CRSEsAaPyxFjP865Nj5jtNBQcKzcJ2dyRqFkiXebA4P8`, PaymentIntent `3Ks7Jv86EazhKuk8T2h4ZCkuCKmnPtCkUCtj2LcWgmBw`, PaymentReceipt `2Ut3YhoBgkNRnWgGynz8NqrzL58t5Up6LbWEJuLbgWqW`, destination eATA `AbwrpUUoT31AngPnx8aEkEfgKQkG5QgzwB4p3wMCtb2a`, and destination token view `dnSo4DZTMn9eCANBubYDcampZbspaA6Pt97iBUgBLvt`. Every request reached PER and none was filtered.
+  - Program-created ER-only permissions were returned on PER with the intended members. The two base-backed eATA permissions were returned on both base and PER with identical state: source has Delegation Program `0`, company `15`, vault PDA `1`; destination has Delegation Program `0`, company `15`, recipient A `15`, vault PDA `1`.
+  - Therefore no individual inaccessible account or stale base/PER permission state exists, and no further access broadening is justified.
+  - The exact valid `execute_private_payment` simulation, with no returned-account snapshot request, still receives `403 Forbidden: {"error":"Access denied"}` before SVM execution. It has no program logs, no Token Program CPI, and no transaction signature, so it does not satisfy the required simulation criterion.
+- Commands run:
+  - Explicit-fixture read-only `probe-access`; explicit-fixture `simulate-execute-a`; JavaScript syntax and whitespace checks only. No full local suite was rerun.
+- Changes made:
+  - Removed the unnecessary four-account `simulateTransaction.accounts` response request while retaining independent before/after fingerprints; added a safe account/permission probe; made failed audits persist their matched probe observations; and required the live runner to explicitly select the authoritative live fixture. Public-safe evidence/status documentation was updated. No permission or blockchain state changed.
+- Tests/simulations:
+  - The individual authenticated account probes and base/PER permission comparisons passed. The valid payment simulation failed at PER ingress with HTTP 403 and did not invoke `AzM25...`, invoke SPL Token by CPI, or return `err: null`.
+- Current blocker:
+  - PER rejects the combined valid transaction even though every individual transaction account and permission is company-readable. The inaccessible account requested by the time-box cannot be identified because none of the probed accounts is inaccessible. The remaining uncertainty is an undocumented transaction-level PER ingress rule or service-side combination check, not a proven application permission mismatch.
+- Exact next step:
+  - Stop without submitting payment or changing permissions. Escalate the public-safe probe table and 403 reproduction to MagicBlock; resume only when the PER supplies an actionable denied-account/reason or the same exact simulation begins reaching SVM.

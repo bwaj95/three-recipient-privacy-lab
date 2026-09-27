@@ -8,11 +8,13 @@ import * as mb from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
   Connection,
   Keypair,
+  PublicKey,
   SystemProgram,
   TransactionMessage,
   VersionedTransaction,
@@ -89,6 +91,53 @@ export function connection(endpoint) {
       }
     },
   });
+}
+
+export function decodePrivatePermission(data) {
+  const bytes = Buffer.from(data);
+  if (bytes.length < 35) {
+    throw new Error(`Unexpected permission data length ${bytes.length}.`);
+  }
+
+  const permissionedAccount = new PublicKey(bytes.subarray(2, 34)).toBase58();
+  const isPrivate = bytes[34] === 1;
+  let layout;
+  let memberOffset;
+  let memberCount;
+
+  if ((bytes.length - 35) % 33 === 0) {
+    layout = "ephemeral";
+    memberOffset = 35;
+    memberCount = isPrivate ? (bytes.length - 35) / 33 : 0;
+  } else {
+    layout = "standard";
+    memberOffset = 39;
+    memberCount = isPrivate && bytes.length >= memberOffset
+      ? bytes.readUInt32LE(35)
+      : 0;
+    if (memberOffset + memberCount * 33 > bytes.length) {
+      throw new Error(`Invalid standard permission member count ${memberCount}.`);
+    }
+  }
+
+  const members = [];
+  for (let index = 0; index < memberCount; index += 1) {
+    const offset = memberOffset + index * 33;
+    members.push({
+      flags: bytes[offset],
+      pubkey: new PublicKey(bytes.subarray(offset + 1, offset + 33)).toBase58(),
+    });
+  }
+  return { permissionedAccount, isPrivate, layout, members };
+}
+
+export function identityRoleForSigner(identityMap, signer) {
+  if (!signer?.publicKey) {
+    throw new Error("Signer lacks a public key.");
+  }
+  return Object.entries(identityMap).find(([, candidate]) =>
+    candidate.publicKey.equals(signer.publicKey),
+  )?.[0] ?? null;
 }
 
 export function readIdl() {
@@ -441,6 +490,18 @@ export async function buildInstructionPlan(
   const viewFlags =
     mb.TX_LOGS_FLAG | mb.TX_BALANCES_FLAG | mb.TX_MESSAGE_FLAG;
   const authorityViewFlags = mb.AUTHORITY_FLAG | viewFlags;
+  const repairCustodyPdaAuthority = mb.createUpdatePermissionInstruction(
+    {
+      authority: [identities.company.publicKey, true],
+      permissionedAccount: [accounts.sourceEata, false],
+    },
+    {
+      members: [
+        { pubkey: identities.company.publicKey, flags: authorityViewFlags },
+        { pubkey: accounts.vault, flags: mb.AUTHORITY_FLAG },
+      ],
+    },
+  );
   const recipientEataPermissionUpdate = mb.createUpdatePermissionInstruction(
     {
       authority: [recipient.publicKey, true],
@@ -453,6 +514,26 @@ export async function buildInstructionPlan(
       ],
     },
   );
+  const repairRecipientPdaAuthority = mb.createUpdatePermissionInstruction(
+    {
+      authority: [identities.company.publicKey, true],
+      permissionedAccount: [accounts.destinationEata, false],
+    },
+    {
+      members: [
+        { pubkey: identities.company.publicKey, flags: authorityViewFlags },
+        { pubkey: recipient.publicKey, flags: authorityViewFlags },
+        { pubkey: accounts.vault, flags: mb.AUTHORITY_FLAG },
+      ],
+    },
+  );
+  const initializeRecipientTokenView =
+    createAssociatedTokenAccountIdempotentInstruction(
+      recipient.publicKey,
+      accounts.destinationTokenAccount,
+      recipient.publicKey,
+      DEVNET_USDC_MINT,
+    );
   const recipientEataSetup = [
     mb.initEphemeralAtaIx(
       accounts.destinationEata,
@@ -606,7 +687,10 @@ export async function buildInstructionPlan(
       { name: "base.configureCustodyEataAccess", signers: ["company"], instructions: [configureCustodyEataAccess] },
       { name: "base.delegateGlobalVaultEata", signers: ["company"], instructions: [delegateGlobalVaultEata] },
       { name: "base.delegateCustodyEata", signers: ["company"], instructions: [delegateCustodyEata] },
+      { name: "base.repairCustodyPdaAuthority", signers: ["company"], instructions: [repairCustodyPdaAuthority] },
+      { name: "base.initializeRecipientTokenView", signers: [context.recipientRole], instructions: [initializeRecipientTokenView] },
       { name: "base.setupRecipientEata", signers: [context.recipientRole], instructions: recipientEataSetup },
+      { name: "base.repairRecipientPdaAuthority", signers: ["company"], instructions: [repairRecipientPdaAuthority] },
       { name: "base.initializePaymentShells", signers: ["company"], instructions: [initializePaymentShells] },
       { name: "base.delegateVault", signers: ["company"], instructions: [delegateVault] },
       { name: "base.delegateIntent", signers: ["company"], instructions: [delegateIntent] },

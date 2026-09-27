@@ -2,7 +2,7 @@
 
 Last updated: 2026-09-27
 
-Status: **DEPLOYED; LIVE SETUP AND TWO APPROVALS FINALIZED; PAYMENT BLOCKED AT PER INGRESS**
+Status: **DEPLOYED; LIVE SETUP AND TWO APPROVALS FINALIZED; SINGLE DIRECT PAYMENT ATTEMPT REJECTED AT PER INGRESS**
 
 ## Fixed scope
 
@@ -74,6 +74,7 @@ Payment A is fixed at 10,000 USDC base units (0.01 USDC). The runner is capped t
 | Approver two approves payment A | `HBLnf1gavgZPVeKfGt2QKcb8jD7oUeVyhyYaejMkrsNvgg9Lip4geWpVCFnSWTVRR8Rc6QtC8f35uDAbfioac9b` | success | finalized |
 | Restore authority-only custody-PDA member on source eATA permission | `2Buc1NDoC4awDX6TiAuLAPp7zwTtDLDG9pTafuDVYMd8cpLutNnnAsxYKQoNqPepo4mrAyz5AR6VkqBamHDz1oGS` | success | finalized |
 | Restore authority-only custody-PDA member on destination eATA permission | `iyJBDBgDWYG7LLKXc6drTeKT4gyVgWhJU5gTxo1UNRQg8JJsqMffs7RrjTU8Y8mdUYX2m7zcVJvJzockQGyKyFC` | success | finalized |
+| Direct 0.01-USDC `execute_private_payment`, bypassing preflight | `32rzAV4Ddmj6JwmoSUvkvLFqetNrK84DvtcAWJ6KsDqcAi3drCiHFBBG1axuYYeFzdnBadrDgFSkmfNhbpMTWtVW` | PER ingress rejection (`HTTP 403 Access denied`); state unchanged | no signature status |
 
 Finalized balances after that transaction:
 
@@ -83,7 +84,7 @@ Finalized balances after that transaction:
 - Approver two: 5,000,000 lamports
 - Recipient A: 35,000,000 lamports
 
-Every submitted transaction was serialized and durably recorded before submission, sent once, and reconciled by its exact signature. All 18 saved signatures remain finalized successes; none is unknown. There is no `payment.A.execute` transaction record.
+Every submitted setup transaction was serialized and durably recorded before submission, sent once, and reconciled by its exact signature. All 18 setup signatures remain finalized successes; none is unknown. The direct payment transaction was also signed and durably recorded before networking, then submitted exactly once with `skipPreflight: true` and `maxRetries: 0`. Its precomputed signature has no PER status and its state remained unchanged, so it is classified as a PER ingress rejection rather than an SVM failure. No replacement transaction was constructed.
 
 Finalized Circle-USDC balances after funding:
 
@@ -118,16 +119,26 @@ No inaccessible individual account or stale base/PER permission was found. Compa
 
 ## Execution result and blocker
 
-The exact valid `execute_private_payment` transaction was simulated through the real PER with signature verification and without requesting returned account snapshots. PER returned HTTP 403 `Access denied` before SVM execution:
+The earlier exact valid `execute_private_payment` simulation returned PER HTTP 403 `Access denied` before SVM execution. Under the later one-attempt authorization, the same fixed 10,000-base-unit payment was constructed with a fresh PER blockhash and submitted directly once, without another simulation and with `skipPreflight: true`, `preflightCommitment: confirmed`, and `maxRetries: 0`.
 
-- isolated program invocation: absent
+Direct-attempt evidence:
+
+- precomputed signature: `32rzAV4Ddmj6JwmoSUvkvLFqetNrK84DvtcAWJ6KsDqcAi3drCiHFBBG1axuYYeFzdnBadrDgFSkmfNhbpMTWtVW`
+- last valid block height: 377068403
+- block height at reconciliation: 377062940
+- submission attempts: exactly one
+- PER submission response: HTTP 403 `Access denied`
+- authenticated PER signature status: absent
+- PER transaction/log record: absent
+- isolated program invocation/success: absent
 - SPL Token CPI invocation/success: absent
-- isolated program success: absent
-- `err: null`: absent
-- payment signature: none
-- persistent payment outflow: zero
+- custody balance before/after: 20,000 / 20,000 base units
+- recipient-A balance before/after: 0 / 0 base units
+- PaymentIntent before/after: APPROVED, approval mask 3, approval count 2, not executed
+- PaymentReceipt before/after: INITIALIZED, amount 0
+- serialized signed transaction: retained only in the ignored mode-0600 fixture; not printed or committed
 
-This does not count as a program simulation. Because every required account and permission succeeds individually, the remaining uncertainty is an undocumented transaction-level PER ingress or account-combination rule. The time-boxed diagnosis stopped without broadening permissions or submitting the payment.
+This matches the prescribed `HTTP 403 + no signature status + unchanged state` classification: **PER ingress rejection before SVM**. It is not evidence of a program failure or token-CPI failure. Because every required account and permission succeeds individually, the remaining limitation is an undocumented transaction-level PER ingress or account-combination rule. No permission was broadened, no second transaction was constructed, and no retry was attempted.
 
 Current state remains:
 

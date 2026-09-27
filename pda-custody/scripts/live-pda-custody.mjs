@@ -45,8 +45,11 @@ import {
   DEVNET_TEE_VALIDATOR,
   DEVNET_USDC_MINT,
   EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+  INTENT_APPROVED,
+  INTENT_EXECUTED,
   PERMISSION_PROGRAM_ID,
   PROGRAM_ID,
+  RECEIPT_INITIALIZED,
   RECEIPT_PAID,
   derivePermission,
 } from "../src/model.mjs";
@@ -89,13 +92,14 @@ if (![
   "fund",
   "setup-a",
   "pay-a",
+  "submit-payment-once",
   "audit",
   "probe-access",
   "reconcile",
   "all",
 ].includes(command)) {
   throw new Error(
-    "Usage: inspect | fund | setup-a | pay-a | audit | probe-access | reconcile | all",
+    "Usage: inspect | fund | setup-a | pay-a | submit-payment-once | audit | probe-access | reconcile | all",
   );
 }
 
@@ -1021,6 +1025,460 @@ function assertPaidReceipt(receipt, context) {
   return view;
 }
 
+function safeSubmitError(error) {
+  const message = cleanError(error)
+    .replace(/[A-Za-z0-9+/]{160,}={0,2}/g, "[redacted-serialized-transaction]")
+    .replace(/[1-9A-HJ-NP-Za-km-z]{160,}/g, "[redacted-serialized-transaction]");
+  return {
+    name: String(error?.name || "Error").slice(0, 120),
+    status: Number.isInteger(error?.status)
+      ? error.status
+      : Number.isInteger(error?.response?.status)
+        ? error.response.status
+        : null,
+    message,
+  };
+}
+
+function assertPublicKeyField(actual, expected, label) {
+  if (!actual || !publicKey(actual).equals(publicKey(expected))) {
+    throw new Error(`${label} does not match the fixed approved payment.`);
+  }
+}
+
+function assertBytesField(actual, expected, label) {
+  if (!actual || !Buffer.from(actual).equals(Buffer.from(expected))) {
+    throw new Error(`${label} does not match the fixed approved payment.`);
+  }
+}
+
+async function readPaymentState(rpc, context) {
+  const [source, destination, intent, receipt] = await Promise.all([
+    rpc.getTokenAccountBalance(context.accounts.sourceTokenAccount),
+    rpc.getTokenAccountBalance(context.accounts.destinationTokenAccount),
+    decodedAccount(rpc, "PaymentIntent", context.accounts.intent),
+    decodedAccount(rpc, "PaymentReceipt", context.accounts.receipt),
+  ]);
+  if (!intent || !receipt) {
+    throw new Error("The approved intent or initialized receipt is unavailable on the PER.");
+  }
+  return {
+    sourceBalance: BigInt(source.value.amount),
+    destinationBalance: BigInt(destination.value.amount),
+    intent,
+    receipt,
+  };
+}
+
+function paymentStateView(value) {
+  return {
+    sourceBalance: value.sourceBalance.toString(),
+    destinationBalance: value.destinationBalance.toString(),
+    intentStatus: Number(value.intent.status),
+    intentStatusName:
+      Number(value.intent.status) === INTENT_EXECUTED
+        ? "EXECUTED"
+        : Number(value.intent.status) === INTENT_APPROVED
+          ? "APPROVED"
+          : "PENDING",
+    approvalMask: Number(field(value.intent, "approval_mask", "approvalMask")),
+    approvalCount: Number(field(value.intent, "approval_count", "approvalCount")),
+    intentExecuted: Boolean(value.intent.executed),
+    receiptStatus: Number(value.receipt.status),
+    receiptStatusName:
+      Number(value.receipt.status) === RECEIPT_PAID ? "PAID" : "INITIALIZED",
+    receiptAmount: value.receipt.amount.toString(),
+  };
+}
+
+function assertReadyPaymentState(value, context) {
+  if (
+    value.sourceBalance !== 20_000n ||
+    value.destinationBalance !== 0n
+  ) {
+    throw new Error("Private token balances differ from the authoritative pre-payment state.");
+  }
+  const intent = value.intent;
+  if (
+    Number(intent.status) !== INTENT_APPROVED ||
+    Boolean(intent.executed) ||
+    Number(field(intent, "approval_mask", "approvalMask")) !== 3 ||
+    Number(field(intent, "approval_count", "approvalCount")) !== 2
+  ) {
+    throw new Error("PaymentIntent is not APPROVED by the two distinct fixed approvers.");
+  }
+  assertPublicKeyField(intent.vault, context.accounts.vault, "intent vault");
+  assertBytesField(
+    field(intent, "payment_id", "paymentId"),
+    context.paymentId,
+    "intent payment ID",
+  );
+  assertPublicKeyField(intent.mint, DEVNET_USDC_MINT, "intent mint");
+  assertPublicKeyField(intent.recipient, context.recipient.publicKey, "intent recipient");
+  assertPublicKeyField(
+    field(intent, "source_eata", "sourceEata"),
+    context.accounts.sourceEata,
+    "intent source eATA",
+  );
+  assertPublicKeyField(
+    field(intent, "destination_eata", "destinationEata"),
+    context.accounts.destinationEata,
+    "intent destination eATA",
+  );
+  assertPublicKeyField(
+    field(intent, "source_token_account", "sourceTokenAccount"),
+    context.accounts.sourceTokenAccount,
+    "intent source token account",
+  );
+  assertPublicKeyField(
+    field(intent, "destination_token_account", "destinationTokenAccount"),
+    context.accounts.destinationTokenAccount,
+    "intent destination token account",
+  );
+  if (
+    BigInt(intent.amount.toString()) !== 10_000n ||
+    BigInt(field(intent, "wallet_revision", "walletRevision").toString()) !==
+      context.walletRevision
+  ) {
+    throw new Error("Intent amount or wallet revision differs from the fixed payment.");
+  }
+  assertBytesField(
+    field(intent, "intent_hash", "intentHash"),
+    context.intentHash,
+    "intent hash",
+  );
+
+  const receipt = value.receipt;
+  if (
+    Number(receipt.status) !== RECEIPT_INITIALIZED ||
+    BigInt(receipt.amount.toString()) !== 0n
+  ) {
+    throw new Error("PaymentReceipt is not INITIALIZED with amount zero.");
+  }
+  assertPublicKeyField(receipt.vault, context.accounts.vault, "receipt vault");
+  assertBytesField(
+    field(receipt, "payment_id", "paymentId"),
+    context.paymentId,
+    "receipt payment ID",
+  );
+}
+
+function paymentStateIsUnchanged(before, after) {
+  return JSON.stringify(paymentStateView(before)) === JSON.stringify(paymentStateView(after));
+}
+
+async function transactionEvidence(rpc, signature, status) {
+  let transaction = null;
+  let retrievalError = null;
+  try {
+    transaction = await rpc.getTransaction(signature, {
+      commitment:
+        status?.confirmationStatus === "finalized" ? "finalized" : "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+  } catch (error) {
+    retrievalError = safeSubmitError(error);
+  }
+  const logs = transaction?.meta?.logMessages ?? [];
+  return {
+    available: Boolean(transaction),
+    retrievalError,
+    slot: transaction?.slot ?? status?.slot ?? null,
+    transactionError: transaction?.meta?.err ?? status?.err ?? null,
+    topLevelInstructionCount:
+      transaction?.transaction?.message?.compiledInstructions?.length ?? null,
+    programInvoked: logs.some((line) =>
+      line.includes(`Program ${PROGRAM_ID.toBase58()} invoke`),
+    ),
+    programSucceeded: logs.some((line) =>
+      line.includes(`Program ${PROGRAM_ID.toBase58()} success`),
+    ),
+    tokenProgramInvoked: logs.some((line) =>
+      line.includes(`Program ${TOKEN_PROGRAM_ID.toBase58()} invoke`),
+    ),
+    tokenProgramSucceeded: logs.some((line) =>
+      line.includes(`Program ${TOKEN_PROGRAM_ID.toBase58()} success`),
+    ),
+    logs,
+  };
+}
+
+async function reconcileDirectPayment(
+  rpc,
+  record,
+  before,
+  context,
+  submitError,
+  returnedSignature,
+) {
+  const ingressRejected = Boolean(
+    submitError && /(?:HTTP\s*)?403|forbidden/i.test(JSON.stringify(submitError)),
+  );
+  let signatureStatus = null;
+  let currentBlockHeight = null;
+  let reconciliationError = null;
+  const maximumPolls = ingressRejected ? 3 : 100;
+
+  for (let attempt = 0; attempt < maximumPolls; attempt += 1) {
+    try {
+      signatureStatus = await statusFor(rpc, record.signature);
+      currentBlockHeight = await rpc.getBlockHeight("confirmed");
+      record.lastPolledAt = new Date().toISOString();
+      record.currentBlockHeight = currentBlockHeight;
+      record.confirmationStatus = signatureStatus?.confirmationStatus ?? null;
+      record.slot = signatureStatus?.slot ?? null;
+      record.error = signatureStatus?.err ?? null;
+      save();
+      if (
+        signatureStatus?.err ||
+        signatureStatus?.confirmationStatus === "finalized" ||
+        (!signatureStatus && currentBlockHeight > record.lastValidBlockHeight)
+      ) {
+        break;
+      }
+      if (ingressRejected && !signatureStatus) {
+        if (attempt === maximumPolls - 1) break;
+      }
+    } catch (error) {
+      reconciliationError = safeSubmitError(error);
+      record.reconciliationError = reconciliationError;
+      save();
+    }
+    await sleep(2_500);
+  }
+
+  let after = null;
+  let stateReadError = null;
+  try {
+    after = await readPaymentState(rpc, context);
+  } catch (error) {
+    stateReadError = safeSubmitError(error);
+  }
+  const evidence = await transactionEvidence(rpc, record.signature, signatureStatus);
+  const beforeView = paymentStateView(before);
+  const afterView = after ? paymentStateView(after) : null;
+  const unchanged = after ? paymentStateIsUnchanged(before, after) : null;
+  let paidReceipt = null;
+  let atomicValidationError = null;
+  let atomicStateValid = false;
+  if (after) {
+    try {
+      paidReceipt = assertPaidReceipt(after.receipt, context);
+      atomicStateValid =
+        after.sourceBalance === 10_000n &&
+        after.destinationBalance === 10_000n &&
+        Number(after.intent.status) === INTENT_EXECUTED &&
+        Boolean(after.intent.executed) &&
+        Number(after.receipt.status) === RECEIPT_PAID;
+      if (!atomicStateValid) {
+        throw new Error("Post-state did not contain all four atomic transitions.");
+      }
+    } catch (error) {
+      atomicValidationError = cleanError(error);
+      atomicStateValid = false;
+      paidReceipt = null;
+    }
+  }
+
+  let outcome;
+  if (signatureStatus?.err) {
+    outcome = "PER_EXECUTION_ERROR";
+  } else if (signatureStatus && atomicStateValid) {
+    outcome =
+      signatureStatus.confirmationStatus === "finalized"
+        ? "FINALIZED_SUCCESS"
+        : "CONFIRMED_SUCCESS";
+  } else if (signatureStatus) {
+    outcome = "SIGNATURE_SUCCESS_STATE_MISMATCH";
+  } else if (ingressRejected && unchanged === true) {
+    outcome = "PER_INGRESS_REJECTED";
+  } else if (
+    currentBlockHeight !== null &&
+    currentBlockHeight > record.lastValidBlockHeight &&
+    unchanged === true
+  ) {
+    outcome = "EXPIRED_NOT_LANDED";
+  } else {
+    outcome = "UNKNOWN";
+  }
+
+  Object.assign(record, {
+    returnedSignature: returnedSignature ?? null,
+    submitError,
+    reconciliationError,
+    stateReadError,
+    currentBlockHeight,
+    confirmationStatus: signatureStatus?.confirmationStatus ?? null,
+    slot: signatureStatus?.slot ?? evidence.slot ?? null,
+    error: signatureStatus?.err ?? null,
+    outcome,
+    reconciledAt: new Date().toISOString(),
+    before: beforeView,
+    after: afterView,
+    persistentStateUnchanged: unchanged,
+    atomicStateValid,
+    atomicValidationError,
+    transactionEvidence: evidence,
+  });
+  state.observations["payment.A.direct-submit-result"] = {
+    signature: record.signature,
+    outcome,
+    confirmationStatus: record.confirmationStatus,
+    slot: record.slot,
+    blockhash: record.blockhash,
+    lastValidBlockHeight: record.lastValidBlockHeight,
+    currentBlockHeight,
+    before: beforeView,
+    after: afterView,
+    paidReceipt,
+    transactionEvidence: evidence,
+    submitError,
+    stateReadError,
+    recordedAt: new Date().toISOString(),
+  };
+  if (atomicStateValid) {
+    state.observations["payment.A.result"] = {
+      signature: record.signature,
+      slot: record.slot,
+      finality: record.confirmationStatus,
+      topLevelInstructionCount: evidence.topLevelInstructionCount,
+      innerTokenCpiObserved: evidence.tokenProgramInvoked,
+      transactionError: evidence.transactionError,
+      sourceBefore: before.sourceBalance.toString(),
+      sourceAfter: after.sourceBalance.toString(),
+      destinationBefore: before.destinationBalance.toString(),
+      destinationAfter: after.destinationBalance.toString(),
+      receipt: paidReceipt,
+      recordedAt: new Date().toISOString(),
+    };
+  }
+  save();
+  return state.observations["payment.A.direct-submit-result"];
+}
+
+async function submitPaymentOnce() {
+  const label = "payment.A.execute";
+  await verifyNetwork("per");
+  if (state.transactions[label]) {
+    throw new Error(
+      `${label} already has a durable transaction record; refusing a replacement or second submission.`,
+    );
+  }
+
+  await reconcile();
+  const unresolved = Object.entries(state.transactions).filter(
+    ([, record]) =>
+      record.outcome !== "success" || record.confirmationStatus !== "finalized",
+  );
+  if (unresolved.length) {
+    throw new Error(
+      `Existing transaction reconciliation is not fully finalized-success: ${unresolved
+        .map(([existingLabel]) => existingLabel)
+        .join(", ")}`,
+    );
+  }
+  if (state.observations["payment.A.result"]) {
+    throw new Error("A successful payment result already exists; refusing another payment.");
+  }
+
+  const rpc = await authenticatedPer("company");
+  const context = deriveContext(state, "A");
+  if (context.amount !== 10_000n) {
+    throw new Error("Derived payment amount differs from the authorized transaction.");
+  }
+  const before = await readPaymentState(rpc, context);
+  assertReadyPaymentState(before, context);
+
+  const plan = await buildInstructionPlan(state, rpc, "A");
+  const execute = planGroup(plan, "per.executeSimulationOnly");
+  if (
+    execute.instructions.length !== 1 ||
+    !execute.instructions[0].programId.equals(PROGRAM_ID)
+  ) {
+    throw new Error("The approved payment is not exactly one isolated program instruction.");
+  }
+  const prepared = await prepareTransaction(
+    rpc,
+    execute.instructions,
+    [identities.company],
+  );
+  const record = (state.transactions[label] = {
+    ...prepared.record,
+    endpoint: "per",
+    semanticLabel: label,
+    semanticAction:
+      "Atomically transfer 0.01 private devnet USDC and write payment A receipt",
+    signerRoles: ["company"],
+    preparedAt: new Date().toISOString(),
+    submittedAt: null,
+    submissionAttemptedAt: null,
+    submissionAttempts: 0,
+    outcome: "PREPARED",
+    skipPreflight: true,
+    preflightCommitment: "confirmed",
+    maxRetries: 0,
+  });
+  save();
+
+  const attemptedAt = new Date().toISOString();
+  record.submittedAt = attemptedAt;
+  record.submissionAttemptedAt = attemptedAt;
+  record.submissionAttempts = 1;
+  record.outcome = "SUBMISSION_ATTEMPTED";
+  save();
+
+  let returnedSignature = null;
+  let submitError = null;
+  try {
+    returnedSignature = await rpc.sendRawTransaction(
+      Buffer.from(record.bytes, "base64"),
+      {
+        skipPreflight: true,
+        preflightCommitment: "confirmed",
+        maxRetries: 0,
+      },
+    );
+    record.returnedSignature = returnedSignature;
+    if (returnedSignature !== record.signature) {
+      record.signatureMismatch = true;
+    }
+  } catch (error) {
+    submitError = safeSubmitError(error);
+    record.submitError = submitError;
+  }
+  record.submissionResponseAt = new Date().toISOString();
+  save();
+
+  const result = await reconcileDirectPayment(
+    rpc,
+    record,
+    before,
+    context,
+    submitError,
+    returnedSignature,
+  );
+  console.dir(
+    {
+      signature: result.signature,
+      outcome: result.outcome,
+      confirmationStatus: result.confirmationStatus,
+      slot: result.slot,
+      lastValidBlockHeight: result.lastValidBlockHeight,
+      currentBlockHeight: result.currentBlockHeight,
+      before: result.before,
+      after: result.after,
+      programInvoked: result.transactionEvidence.programInvoked,
+      programSucceeded: result.transactionEvidence.programSucceeded,
+      tokenProgramInvoked: result.transactionEvidence.tokenProgramInvoked,
+      tokenProgramSucceeded: result.transactionEvidence.tokenProgramSucceeded,
+      submitError: result.submitError,
+      serializedTransactionPrinted: false,
+      submissionAttempts: record.submissionAttempts,
+    },
+    { depth: null },
+  );
+}
+
 async function pay(label) {
   if (label !== "A") {
     throw new Error("This live runner is capped to the single authorized payment A.");
@@ -1605,6 +2063,7 @@ try {
   if (command === "fund") await fund();
   if (command === "setup-a") await setupPayment("A");
   if (command === "pay-a") await pay("A");
+  if (command === "submit-payment-once") await submitPaymentOnce();
   if (command === "audit") await audit();
   if (command === "probe-access") await probeAccess();
   if (command === "reconcile") await reconcile();

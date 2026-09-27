@@ -780,3 +780,25 @@
   - PER rejects the combined valid transaction even though every individual transaction account and permission is company-readable. The inaccessible account requested by the time-box cannot be identified because none of the probed accounts is inaccessible. The remaining uncertainty is an undocumented transaction-level PER ingress rule or service-side combination check, not a proven application permission mismatch.
 - Exact next step:
   - Stop without submitting payment or changing permissions. Escalate the public-safe probe table and 403 reproduction to MagicBlock; resume only when the PER supplies an actionable denied-account/reason or the same exact simulation begins reaching SVM.
+
+### 2026-09-27 — Single authorized direct payment attempt rejected at PER ingress
+
+- Files inspected:
+  - Authoritative ignored fixture `.lab/pda-custody-live-20260927.json` through the guarded live runner; all saved transaction outcomes; fixed payment-A derivation; current program IDL; direct transaction construction/reconciliation code; `LIVE_PER_EVIDENCE.md`; current branch and tracked diff.
+- Commands run:
+  - `npm run check`; `git diff --check`; explicit-fixture `submit-payment-once`; tracked status/diff inspection. No `simulateTransaction` call was made during this attempt.
+- Changes made:
+  - Added a narrowly scoped direct-submit command that refuses an existing payment record, rechecks all fixed payment fields, saves the signed bytes/signature/blockhash before networking, records the single attempt before the call, uses `sendRawTransaction` with `skipPreflight: true`, `preflightCommitment: confirmed`, and `maxRetries: 0`, and reconciles only the saved signature. The serialized transaction remains only in the ignored mode-0600 fixture and was never printed.
+  - Updated public-safe live evidence with the result. Pre-edit backups were preserved and remain untracked.
+- Tests and live reconciliation:
+  - JavaScript syntax checks and whitespace checks passed. All 18 existing setup/approval/permission signatures independently reconciled as finalized success immediately before transaction construction.
+  - Exact pre-state passed: custody 20,000; recipient A 0; intent APPROVED with approval mask 3/count 2; receipt INITIALIZED with amount 0; no prior `payment.A.execute` record.
+  - Exactly one direct network submission was attempted for the fixed 10,000-base-unit payment. Precomputed signature: `32rzAV4Ddmj6JwmoSUvkvLFqetNrK84DvtcAWJ6KsDqcAi3drCiHFBBG1axuYYeFzdnBadrDgFSkmfNhbpMTWtVW`.
+- Evidence and conclusions:
+  - PER returned `403 Forbidden: {"error":"Access denied"}`. The saved signature had no authenticated PER status and no transaction/log record; reconciliation observed block height 377062940 versus last-valid height 377068403.
+  - Post-state exactly matched pre-state: custody 20,000; recipient A 0; intent still APPROVED/not executed; receipt still INITIALIZED/amount 0.
+  - The isolated program was not invoked and SPL Token CPI was not invoked. This is a PER ingress rejection before SVM, not a program or CPI failure. Submission attempts remain exactly one; no replacement was constructed and no retry occurred.
+- Current blocker:
+  - The real PER continues to reject the fully bound transaction at ingress despite positive account-by-account access controls. It provides no denied-account or policy reason.
+- Exact next step:
+  - Stop. Obtain an actionable explanation/fix from MagicBlock for this transaction-level 403. Any second payment transaction requires new explicit authorization; do not change permissions or resubmit under the current authorization.
